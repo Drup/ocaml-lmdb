@@ -1,0 +1,32 @@
+Name: ocaml-lmdb
+Version: 0.1
+Synopsis: Ocaml binding for lmdb.
+Authors: Gabriel Radanne <drupyog@zoho.com>
+License: MIT
+Description: Ocaml bindings for lmdb (http://symas.com/mdb/#overview)
+
+OASISFormat: 0.4
+BuildTools: ocamlbuild
+Plugins: META (0.4), DevFiles (0.4)
+
+Library lmdb
+  Path: src
+  Modules: Lmdb
+  InternalModules: Lmdb_internal
+  BuildDepends: ctypes, ctypes.foreign
+  CCLib: -llmdb
+  CCOpt: -O2 -Wall -Wextra -Wno-unused-parameter
+
+Executable "version"
+  Path: tests
+  MainIs: version.ml
+  Build$: flag(tests)
+  CompiledObject: best
+  Install: false
+  BuildDepends: lmdb
+
+Test "version"
+  Run$: flag(tests)
+  TestTools: version
+  Command: $version
+  WorkingDirectory: /tmp
