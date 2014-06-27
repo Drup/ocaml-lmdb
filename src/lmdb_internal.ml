@@ -132,7 +132,11 @@ let mdb_cursor_op = uint
 (* Improve later *)
 type mdb_error = unit
 let mdb_error : mdb_error typ =
-  view ~read:ignore ~write:(fun () -> 0) int
+  let read i =
+    if i = 0 then ()
+    else failwith (Printf.sprintf "Ldmb Error %i" i)
+  in
+  view ~read ~write:(fun () -> 0) int
 
 (** Helpers *)
 

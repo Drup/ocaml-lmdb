@@ -30,3 +30,12 @@ Test "version"
   TestTools: version
   Command: $version
   WorkingDirectory: /tmp
+
+
+Executable "simple_db"
+  Path: tests
+  MainIs: simple_db.ml
+  Build$: flag(tests)
+  CompiledObject: best
+  Install: false
+  BuildDepends: lmdb

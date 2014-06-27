@@ -11,6 +11,10 @@ let opt_iter f = function
   | None -> ()
   | Some x -> f x
 
+let opt_map f = function
+  | None -> None
+  | Some x -> Some (f x)
+
 (** Stat type *)
 
 type stats = {
@@ -31,41 +35,6 @@ let make_stats stat = {
 }
 
 
-(** Value type *)
-
-type 'a value = {
-  write : 'a -> (mdb_val, [ `Struct ]) structured ;
-  read : (mdb_val, [ `Struct ]) structured -> 'a ;
-}
-
-
-let read_int v =
-  (* assert (sizeof int = Size_t.to_int (getf v mv_size)) ; *)
-  from_voidp camlint (getf v mv_data)
-let int_size = Size_t.of_int (sizeof camlint)
-let write_int i =
-  let v = make mdb_val in
-  setf v mv_size int_size ;
-  setf v mv_data (to_voidp i) ;
-  v
-
-let int_value = { write = write_int ; read = read_int }
-
-
-let char_size = sizeof char
-let read_string v =
-  let size = Size_t.to_int (getf v mv_size) in
-  let length = size / char_size in
-  string_from_ptr ~length @@ from_voidp char @@ getf v mv_data
-let write_string s =
-  let v = make mdb_val in
-  setf v mv_size @@ Size_t.of_int @@ String.length s * char_size ;
-  setf v mv_data @@ to_voidp @@ allocate string s ; (* Can we do better ? *)
-  v
-
-let string_value = { write = write_string ; read = read_string }
-
-
 (** {2 High level binding} *)
 
 let version () =
@@ -77,12 +46,9 @@ let version () =
 
 type env = mdb_env
 
-type transaction = mdb_txn
-
 module Env = struct
-  type t = env
 
-  exception Assert of (t * string)
+  exception Assert of (env * string)
 
   module Flags = struct
     type t = mdb_env_flag
@@ -103,7 +69,8 @@ module Env = struct
     let nomeminit  = i mdb_NOMEMINIT
   end
 
-  let create ?maxreaders ?mapsize ?maxdbs ?(flags=Unsigned.UInt.zero) path mode =
+  let create ?maxreaders ?mapsize ?maxdbs ?(flags=Unsigned.UInt.zero) path =
+    let mode = coerce uint32_t mode_t UInt32.(of_int 777) in
     let env_ptr = alloc mdb_env in
     mdb_env_create env_ptr ;
     let env = !@env_ptr in
@@ -140,36 +107,35 @@ module Env = struct
     mdb_env_get_fd env fd ;
     !@fd
 
-  let maxreaders env =
+  let max_readers env =
     let i = alloc int in
     mdb_env_get_maxreaders env i ;
     !@i
 
-  let get_maxkeysize = mdb_env_get_maxkeysize
+  let max_keysize = mdb_env_get_maxkeysize
 
   let of_transaction = mdb_txn_env
 
-  let reader_list env f =
-    mdb_reader_list env (fun s _ -> f s; 0) null
+  let reader_list env =
+    let x = ref [] in
+    mdb_reader_list env (fun s _ -> x:=  s::!x ; 0) null ;
+    !x
 
   let readers env =
     let i = alloc int in
     mdb_reader_check env i ;
     !@i
 
-
 end
 
-let transaction ?parent ?(write=false) env f =
+(* Use internally for trivial functions *)
+let trivial_txn ~write env f =
   let txn = alloc mdb_txn in
-  let flag = if write then Env.Flags.rdonly else UInt.zero in
-  mdb_txn_begin env parent flag txn ;
-  let res = f !@txn in
-  match res with
-    | `Commit -> mdb_txn_commit !@txn
-    | `Abort -> mdb_txn_abort !@txn
+  let txn_flag = if write then UInt.zero else Env.Flags.rdonly in
+  mdb_txn_begin env None txn_flag txn ;
+  (f !@txn : unit) ;
+  mdb_txn_commit !@txn
 
-type db = mdb_dbi
 
 module PutFlags = struct
   type t = mdb_put_flag
@@ -186,59 +152,173 @@ module PutFlags = struct
   let multiple    = i mdb_MULTIPLE
 end
 
-module Db = struct
+module Flags = struct
+  type t = mdb_env_flag
+  let i = Unsigned.UInt.of_int
+  let (+) = Unsigned.UInt.logor
+  let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
+  let eq f f' = Unsigned.UInt.(compare f f' = 0)
+  let reversekey = i mdb_REVERSEKEY
+  let dupsort    = i mdb_DUPSORT
+  let dupfixed   = i mdb_DUPFIXED
+  let integerdup = i mdb_INTEGERDUP
+  let reversedup = i mdb_REVERSEDUP
 
-  module Flags = struct
-    type t = mdb_env_flag
-    let i = Unsigned.UInt.of_int
-    let (+) = Unsigned.UInt.logor
-    let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
-    let eq f f' = Unsigned.UInt.(compare f f' = 0)
-    let reversekey = i mdb_REVERSEKEY
-    let dupsort    = i mdb_DUPSORT
-    let integerkey = i mdb_INTEGERKEY
-    let dupfixed   = i mdb_DUPFIXED
-    let integerdup = i mdb_INTEGERDUP
-    let reversedup = i mdb_REVERSEDUP
-    let create     = i mdb_CREATE
-  end
+  (* Not exported *)
+  let integerkey = i mdb_INTEGERKEY
+  let create     = i mdb_CREATE
+end
 
-  let create ?txn ?name ?(flags=UInt.zero) env =
+
+type db_val = (mdb_val, [ `Struct ]) structured ptr
+
+module type KEY = sig
+  type t
+  val default_flags : Flags.t
+  val write : t -> db_val
+end
+
+module type VAL = sig
+  type t
+  val default_flags : Flags.t
+  val read : db_val -> t
+  val write : t -> db_val
+end
+
+module KeyInt : (KEY with type t = int) = struct
+  type t = int
+  let default_flags = Flags.integerkey
+  let int_size = Size_t.of_int (sizeof camlint)
+  let write i =
+    let v = make mdb_val in
+    setf v mv_size int_size ;
+    setf v mv_data (to_voidp @@ allocate camlint i) ;
+    addr v
+end
+
+module ValString : (VAL with type t = string) = struct
+  type t = string
+  let default_flags = Unsigned.UInt.zero
+
+  let array_of_string s =
+    let l = String.length s in
+    let a = CArray.make char l in
+    for i = 0 to l - 1 do
+      CArray.set a i s.[i]
+    done ; a
+
+  let read v =
+    let length = Size_t.to_int (getf !@v mv_size) in
+    string_from_ptr ~length @@ from_voidp char @@ getf !@v mv_data
+  let write s =
+    let v = make mdb_val in
+    let a = array_of_string s in
+    setf v mv_size @@ Size_t.of_int @@ CArray.length a ;
+    setf v mv_data @@ to_voidp @@ CArray.start a ;
+    addr v
+end
+
+
+
+exception Abort of mdb_txn
+
+module Make (Key : KEY) (Val : VAL) = struct
+
+  let def_flags = Flags.(Key.default_flags + Val.default_flags)
+
+  type db = {env : env ; db : mdb_dbi }
+
+  let create ?(create=true) ?name ?(flags=UInt.zero) env =
     let db = alloc mdb_dbi in
-    begin match txn with
-      | Some txn -> mdb_dbi_open txn name flags db
-      | None ->
-          transaction env (fun t -> mdb_dbi_open t name flags db ; `Commit)
-    end ;
-    (* We do not put a finaliser here, as it would break with mdb_drop. *)
-    (* Gc.finalise mdb_dbi_close env !@db *)
-    !@db
+    let flags = if create then Flags.(flags + create + def_flags) else Flags.(flags + def_flags) in
 
-  let stats t db =
+    let f txn = mdb_dbi_open txn name flags db in
+    trivial_txn ~write:create env f ;
+
+    (* We do not put a finaliser here, as it would break with mdb_drop.
+       Slight memory leak, but nothing terrible. *)
+    (* Gc.finalise mdb_dbi_close env !@db *)
+    { env ; db = !@db }
+
+  let stats { env ; db } =
     let stats = make mdb_stat in
-    mdb_dbi_stat t db (addr stats) ;
+    trivial_txn ~write:false env (fun t -> mdb_dbi_stat t db (addr stats)) ;
     make_stats stats
 
-  let get_flags t db =
+  let flags { env ; db } =
     let flags = alloc mdb_dbi_open_flag in
-    mdb_dbi_flags t db flags ;
+    trivial_txn ~write:false env (fun t -> mdb_dbi_flags t db flags) ;
     !@flags
 
-  let drop ?(delete=false) t db =
-    mdb_drop t db delete
+  let drop ?(delete=false) { env ; db } =
+    trivial_txn ~write:true env (fun t -> mdb_drop t db delete)
 
-  let get t db k =
-    let v = make mdb_val in
-    mdb_get t db (addr k) (addr v) ;
-    v
+  let get { db ; env } k =
+    let v = addr @@ make mdb_val in
+    trivial_txn ~write:false env (fun t -> mdb_get t db (Key.write k) v) ;
+    Val.read v
 
-  let put ?(flags=UInt.zero) t db k v =
-    mdb_put t db (addr k) (addr v) flags
+  let put ?(flags=UInt.zero) { db ; env } k v =
+    trivial_txn ~write:true env (fun t -> mdb_put t db (Key.write k) (Val.write v) flags)
 
-  let del ?v t db k =
-    match v with
-      | Some v -> mdb_del t db (addr k) (addr v)
-      | None ->  mdb_del t db (addr k) @@ from_voidp mdb_val null
+  let del ?v { db ; env } k =
+    trivial_txn ~write:true env (fun t ->
+      match v with
+        | Some v -> mdb_del t db (Key.write k) (Val.write v)
+        | None ->  mdb_del t db (Key.write k) @@ from_voidp mdb_val null
+    )
 
+  module Txn = struct
+
+    type 'a txn = { txn : mdb_txn ; db : mdb_dbi } constraint 'a = [< `Read | `Write ]
+
+    let raw parent write {env ; db } f =
+      let txn = alloc mdb_txn in
+      let parent = opt_map (fun x -> x.txn) parent in
+      let txn_flag = if write then UInt.zero else Env.Flags.rdonly in
+      mdb_txn_begin env parent txn_flag txn ;
+      try match f { txn = !@txn ; db } with
+        | `Ok x -> mdb_txn_commit !@txn ; Some x
+        | `Abort -> mdb_txn_abort !@txn ; None
+      with
+        | Abort t' when t' == !@txn || parent = None -> mdb_txn_abort !@txn ; None
+        | exn -> mdb_txn_abort !@txn ; raise exn
+
+    let go ?parent t f = raw parent false t f
+
+    let gow ?parent t f = raw parent true t f
+
+    let abort { txn } = raise (Abort txn)
+
+    let stats { txn ; db } =
+      let stats = make mdb_stat in
+      mdb_dbi_stat txn db (addr stats) ;
+      make_stats stats
+
+    let flags { txn ; db } =
+      let flags = alloc mdb_dbi_open_flag in
+      mdb_dbi_flags txn db flags ;
+      !@flags
+
+    let drop ?(delete=false) { txn ; db } =
+      mdb_drop txn db delete
+
+    let get { db ; txn } k =
+      let v = addr @@ make mdb_val in
+      mdb_get txn db (Key.write k) v ;
+      Val.read v
+
+    let put ?(flags=UInt.zero) { db ; txn } k v =
+      mdb_put txn db (Key.write k) (Val.write v) flags
+
+    let del ?v { db ; txn } k =
+      match v with
+        | Some v -> mdb_del txn db (Key.write k) (Val.write v)
+        | None ->  mdb_del txn db (Key.write k) @@ from_voidp mdb_val null
+
+  end
 
 end
+
+module Db = Make (ValString) (ValString)
+module IntDb = Make (KeyInt) (ValString)
