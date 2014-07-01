@@ -35,8 +35,8 @@ module Env : sig
     end
 
     val create :
-      ?maxreaders:int ->
-      ?mapsize:int -> ?maxdbs:int -> ?flags:Flags.t -> string -> env
+      ?maxreaders:int -> ?mapsize:int -> ?maxdbs:int -> ?flags:Flags.t ->
+      string -> env
 
     val copy : env -> string -> unit
 
@@ -60,8 +60,6 @@ module Env : sig
 
     val readers : env -> int
 
-    (* val of_transaction : Internal.mdb_txn -> env *)
-
 end
 
 
@@ -73,7 +71,6 @@ module PutFlags : sig
   val nooverwrite : t
   val nodupdata : t
   val current : t
-  val reserve : t
   val append : t
   val appenddup : t
   val multiple : t
@@ -82,7 +79,6 @@ end
 
 module Flags : sig
   type t
-  val i : int -> t
   val ( + ) : t -> t -> t
   val test : t -> t -> bool
   val eq : t -> t -> bool
@@ -147,5 +143,8 @@ module Make (Key : KEY) (Val : VAL) : sig
     val get : [> `Read ] txn -> Key.t -> Val.t
     val put : ?flags:Flags.t -> [> `Write ] txn -> Key.t -> Val.t -> unit
     val del : ?v:Val.t -> [> `Write ] txn -> Key.t -> unit
+
+    val env : 'a txn -> env
+
   end
 end

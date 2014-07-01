@@ -114,8 +114,6 @@ module Env = struct
 
   let max_keysize = mdb_env_get_maxkeysize
 
-  let of_transaction = mdb_txn_env
-
   let reader_list env =
     let x = ref [] in
     mdb_reader_list env (fun s _ -> x:=  s::!x ; 0) null ;
@@ -315,6 +313,8 @@ module Make (Key : KEY) (Val : VAL) = struct
       match v with
         | Some v -> mdb_del txn db (Key.write k) (Val.write v)
         | None ->  mdb_del txn db (Key.write k) @@ from_voidp mdb_val null
+
+    let env { txn } = mdb_txn_env txn
 
   end
 
