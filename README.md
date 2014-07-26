@@ -1,3 +1,3 @@
-# Ocaml-lmdb
+# OCaml-lmdb
 
-Ocaml bindings for [lmdb](http://symas.com/mdb/#overview).
+OCaml bindings for [lmdb](http://symas.com/mdb/#overview).

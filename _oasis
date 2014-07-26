@@ -1,9 +1,9 @@
 Name: ocaml-lmdb
 Version: 0.1
-Synopsis: Ocaml binding for lmdb.
+Synopsis: OCaml binding for lmdb.
 Authors: Gabriel Radanne <drupyog@zoho.com>
 License: MIT
-Description: Ocaml bindings for lmdb (http://symas.com/mdb/#overview)
+Description: OCaml bindings for lmdb (http://symas.com/mdb/#overview)
 
 OASISFormat: 0.4
 BuildTools: ocamlbuild
