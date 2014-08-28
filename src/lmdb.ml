@@ -69,8 +69,8 @@ module Env = struct
     let nomeminit  = i mdb_NOMEMINIT
   end
 
-  let create ?maxreaders ?mapsize ?maxdbs ?(flags=Unsigned.UInt.zero) path =
-    let mode = coerce uint32_t mode_t UInt32.(of_int 777) in
+  let create ?maxreaders ?mapsize ?maxdbs ?(flags=Unsigned.UInt.zero) ?(mode=0o755) path =
+    let mode = coerce uint32_t mode_t UInt32.(of_int mode) in
     let env_ptr = alloc mdb_env in
     mdb_env_create env_ptr ;
     let env = !@env_ptr in
