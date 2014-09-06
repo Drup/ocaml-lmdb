@@ -35,7 +35,7 @@ module Env : sig
     end
 
     val create :
-      ?maxreaders:int -> ?mapsize:int -> ?maxdbs:int -> ?flags:Flags.t ->
+      ?maxreaders:int -> ?mapsize:int -> ?maxdbs:int -> ?flags:Flags.t -> ?mode:int ->
       string -> env
 
     val copy : env -> string -> unit
