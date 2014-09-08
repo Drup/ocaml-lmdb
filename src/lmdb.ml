@@ -56,6 +56,7 @@ module Env = struct
     let (+) = Unsigned.UInt.logor
     let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
     let eq f f' = Unsigned.UInt.(compare f f' = 0)
+    let none = Unsigned.UInt.zero
     let fixedmap   = i mdb_FIXEDMAP
     let nosubdir   = i mdb_NOSUBDIR
     let nosync     = i mdb_NOSYNC
@@ -69,7 +70,7 @@ module Env = struct
     let nomeminit  = i mdb_NOMEMINIT
   end
 
-  let create ?maxreaders ?mapsize ?maxdbs ?(flags=Unsigned.UInt.zero) ?(mode=0o755) path =
+  let create ?maxreaders ?mapsize ?maxdbs ?(flags=Flags.none) ?(mode=0o755) path =
     let mode = coerce uint32_t mode_t UInt32.(of_int mode) in
     let env_ptr = alloc mdb_env in
     mdb_env_create env_ptr ;
@@ -129,7 +130,10 @@ end
 (* Use internally for trivial functions *)
 let trivial_txn ~write env f =
   let txn = alloc mdb_txn in
-  let txn_flag = if write then UInt.zero else Env.Flags.rdonly in
+  let txn_flag = if write
+    then Env.Flags.none
+    else Env.Flags.rdonly
+  in
   mdb_txn_begin env None txn_flag txn ;
   (f !@txn : unit) ;
   mdb_txn_commit !@txn
@@ -141,6 +145,7 @@ module PutFlags = struct
   let (+) = Unsigned.UInt.logor
   let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
   let eq f f' = Unsigned.UInt.(compare f f' = 0)
+  let none = Unsigned.UInt.zero
   let nooverwrite = i mdb_NOOVERWRITE
   let nodupdata   = i mdb_NODUPDATA
   let current     = i mdb_CURRENT
@@ -156,6 +161,7 @@ module Flags = struct
   let (+) = Unsigned.UInt.logor
   let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
   let eq f f' = Unsigned.UInt.(compare f f' = 0)
+  let none = Unsigned.UInt.zero
   let reversekey = i mdb_REVERSEKEY
   let dupsort    = i mdb_DUPSORT
   let dupfixed   = i mdb_DUPFIXED
@@ -226,7 +232,7 @@ module Make (Key : KEY) (Val : VAL) = struct
 
   type db = {env : env ; db : mdb_dbi }
 
-  let create ?(create=true) ?name ?(flags=UInt.zero) env =
+  let create ?(create=true) ?name ?(flags=Flags.none) env =
     let db = alloc mdb_dbi in
     let flags = if create then Flags.(flags + create + def_flags) else Flags.(flags + def_flags) in
 
@@ -306,7 +312,7 @@ module Make (Key : KEY) (Val : VAL) = struct
       mdb_get txn db (Key.write k) v ;
       Val.read v
 
-    let put ?(flags=UInt.zero) { db ; txn } k v =
+    let put ?(flags=PutFlags.none) { db ; txn } k v =
       mdb_put txn db (Key.write k) (Val.write v) flags
 
     let del ?v { db ; txn } k =

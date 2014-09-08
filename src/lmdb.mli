@@ -21,6 +21,8 @@ module Env : sig
         val ( + ) : t -> t -> t
         val test : t -> t -> bool
         val eq : t -> t -> bool
+        val none : t
+
         val fixedmap : t
         val nosubdir : t
         val nosync : t
@@ -68,6 +70,8 @@ module PutFlags : sig
   val ( + ) : t -> t -> t
   val test : t -> t -> bool
   val eq : t -> t -> bool
+  val none : t
+
   val nooverwrite : t
   val nodupdata : t
   val current : t
@@ -82,6 +86,8 @@ module Flags : sig
   val ( + ) : t -> t -> t
   val test : t -> t -> bool
   val eq : t -> t -> bool
+  val none : t
+
   val reversekey : t
   val dupsort : t
   val dupfixed : t
