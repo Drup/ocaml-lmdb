@@ -142,20 +142,18 @@ module Make (Key : Key.S) (Val : Val.S) : sig
     type 'a txn constraint 'a = [< `Read | `Write ]
 
     val go :
-      ?parent:'b txn -> db ->
-      ([ `Read ] txn -> [< `Abort | `Ok of 'a ]) -> 'a option
-
-    val gow :
-      ?parent:[> `Write] txn -> db ->
-      ([ `Read | `Write ] txn -> [< `Abort | `Ok of 'a ]) -> 'a option
+      ?parent:([< `Read | `Write ] as 'a) txn ->
+      rw:'a ->
+      db ->
+      ('a txn -> [< `Abort | `Ok of 'b ]) -> 'b option
 
     val abort : 'a txn -> 'b
 
-    val stats : [> `Read ] txn -> stats
-    val flags : [> `Read ] txn -> Flags.t
+    val stats : 'a txn -> stats
+    val flags : 'a txn -> Flags.t
     val drop : ?delete:bool -> [< `Write ] txn -> unit
 
-    val get : [> `Read ] txn -> Key.t -> Val.t
+    val get : 'a txn -> Key.t -> Val.t
     val put : ?flags:Flags.t -> [> `Write ] txn -> Key.t -> Val.t -> unit
     val del : ?v:Val.t -> [> `Write ] txn -> Key.t -> unit
 

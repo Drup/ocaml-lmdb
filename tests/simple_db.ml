@@ -10,7 +10,7 @@ let () =
   print_endline "create the db" ;
   let db = D.create ~create:true env in
 
-  let s = D.Txn.gow db (fun t ->
+  let s = D.Txn.go ~rw:`Write db (fun t ->
     print_endline "put the key in the db" ;
     D.Txn.put t "foo" (read_line ()) ;
 

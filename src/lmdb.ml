@@ -302,23 +302,24 @@ module Make (Key : Key.S) (Val : Val.S) = struct
 
   module Txn = struct
 
-    type 'a txn = { txn : mdb_txn ; db : mdb_dbi } constraint 'a = [< `Read | `Write ]
+    type 'a txn = { rw : 'a ; txn : mdb_txn ; db : mdb_dbi }
+      constraint 'a = [< `Read | `Write ]
 
-    let raw parent write {env ; db } f =
+    let go ?parent ~rw { env ; db } f =
       let txn = alloc mdb_txn in
       let parent = opt_map (fun x -> x.txn) parent in
-      let txn_flag = if write then UInt.zero else Env.Flags.rdonly in
+      let txn_flag = match rw with
+        | `Write -> Env.Flags.none
+        | `Read -> Env.Flags.rdonly
+      in
       mdb_txn_begin env parent txn_flag txn ;
-      try match f { txn = !@txn ; db } with
+      try match f { rw ; txn = !@txn ; db } with
         | `Ok x -> mdb_txn_commit !@txn ; Some x
         | `Abort -> mdb_txn_abort !@txn ; None
       with
-        | Abort t' when t' == !@txn || parent = None -> mdb_txn_abort !@txn ; None
+        | Abort t' when t' == !@txn || parent = None ->
+            mdb_txn_abort !@txn ; None
         | exn -> mdb_txn_abort !@txn ; raise exn
-
-    let go ?parent t f = raw parent false t f
-
-    let gow ?parent t f = raw parent true t f
 
     let abort { txn } = raise (Abort txn)
 
