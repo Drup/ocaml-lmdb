@@ -176,57 +176,72 @@ end
 
 type db_val = (mdb_val, [ `Struct ]) structured ptr
 
-module type KEY = sig
-  type t
-  val default_flags : Flags.t
-  val write : t -> db_val
+module Val = struct
+
+  module type S = sig
+    type t
+    val default_flags : Flags.t
+    val read : db_val -> t
+    val write : t -> db_val
+  end
+
+  module Int : S with type t = int = struct
+    type t = int
+    let default_flags = Flags.integerkey
+    let int_size = Size_t.of_int (sizeof camlint)
+    let write i =
+      let v = make mdb_val in
+      setf v mv_size int_size ;
+      setf v mv_data (to_voidp @@ allocate camlint i) ;
+      addr v
+    let read v =
+      !@(from_voidp camlint @@ getf !@v mv_data)
+  end
+
+  module String : S with type t = string = struct
+    type t = string
+    let default_flags = Flags.none
+
+    let array_of_string s =
+      let l = String.length s in
+      let a = CArray.make char l in
+      for i = 0 to l - 1 do
+        CArray.set a i s.[i]
+      done ; a
+
+    let read v =
+      let length = Size_t.to_int (getf !@v mv_size) in
+      string_from_ptr ~length @@ from_voidp char @@ getf !@v mv_data
+    let write s =
+      let v = make mdb_val in
+      let a = array_of_string s in
+      setf v mv_size @@ Size_t.of_int @@ CArray.length a ;
+      setf v mv_data @@ to_voidp @@ CArray.start a ;
+      addr v
+  end
+
+
 end
 
-module type VAL = sig
-  type t
-  val default_flags : Flags.t
-  val read : db_val -> t
-  val write : t -> db_val
-end
 
-module KeyInt : (KEY with type t = int) = struct
-  type t = int
-  let default_flags = Flags.integerkey
-  let int_size = Size_t.of_int (sizeof camlint)
-  let write i =
-    let v = make mdb_val in
-    setf v mv_size int_size ;
-    setf v mv_data (to_voidp @@ allocate camlint i) ;
-    addr v
-end
+module Key = struct
 
-module ValString : (VAL with type t = string) = struct
-  type t = string
-  let default_flags = Unsigned.UInt.zero
+  module type S = Val.S
 
-  let array_of_string s =
-    let l = String.length s in
-    let a = CArray.make char l in
-    for i = 0 to l - 1 do
-      CArray.set a i s.[i]
-    done ; a
+  module Int : S with type t = int = struct
+    include Val.Int
+    let default_flags = Flags.integerkey
+  end
 
-  let read v =
-    let length = Size_t.to_int (getf !@v mv_size) in
-    string_from_ptr ~length @@ from_voidp char @@ getf !@v mv_data
-  let write s =
-    let v = make mdb_val in
-    let a = array_of_string s in
-    setf v mv_size @@ Size_t.of_int @@ CArray.length a ;
-    setf v mv_data @@ to_voidp @@ CArray.start a ;
-    addr v
+  module String : S with type t = string = Val.String
+
 end
 
 
 
 exception Abort of mdb_txn
 
-module Make (Key : KEY) (Val : VAL) = struct
+module Make (Key : Key.S) (Val : Val.S) = struct
 
   let def_flags = Flags.(Key.default_flags + Val.default_flags)
 
@@ -326,5 +341,5 @@ module Make (Key : KEY) (Val : VAL) = struct
 
 end
 
-module Db = Make (ValString) (ValString)
-module IntDb = Make (KeyInt) (ValString)
+module Db = Make (Key.String) (Val.String)
+module IntDb = Make (Key.Int) (Val.String)

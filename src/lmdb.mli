@@ -98,24 +98,33 @@ end
 
 type db_val
 
-module type KEY = sig
-  type t
-  val default_flags : Flags.t
-  val write : t -> db_val
+module Key : sig
+  module type S = sig
+    type t
+    val default_flags : Flags.t
+    val read : db_val -> t
+    val write : t -> db_val
+  end
+
+  module Int : S with type t = int
+  module String : S with type t = string
+
 end
 
-module type VAL = sig
-  type t
-  val default_flags : Flags.t
-  val read : db_val -> t
-  val write : t -> db_val
+module Val : sig
+  module type S = sig
+    type t
+    val default_flags : Flags.t
+    val read : db_val -> t
+    val write : t -> db_val
+  end
+
+  module Int : S with type t = int
+  module String : S with type t = string
+
 end
 
-module KeyInt : KEY with type t = int
-
-module ValString : VAL with type t = string
-
-module Make (Key : KEY) (Val : VAL) : sig
+module Make (Key : Key.S) (Val : Val.S) : sig
 
   type db
 

@@ -1,6 +1,6 @@
 open Lmdb
 
-module D = Make(ValString)(ValString)
+module D = Make(Key.String)(Val.String)
 
 
 let () =
