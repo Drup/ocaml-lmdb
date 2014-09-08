@@ -249,8 +249,11 @@ module Make (Key : Key.S) (Val : Val.S) = struct
 
   let create ?(create=true) ?name ?(flags=Flags.none) env =
     let db = alloc mdb_dbi in
-    let flags = if create then Flags.(flags + create + def_flags) else Flags.(flags + def_flags) in
-
+    let flags =
+      if create
+      then Flags.(flags + create + def_flags)
+      else Flags.(flags + def_flags)
+    in
     let f txn = mdb_dbi_open txn name flags db in
     trivial_txn ~write:create env f ;
 
@@ -261,24 +264,34 @@ module Make (Key : Key.S) (Val : Val.S) = struct
 
   let stats { env ; db } =
     let stats = make mdb_stat in
-    trivial_txn ~write:false env (fun t -> mdb_dbi_stat t db (addr stats)) ;
+    trivial_txn ~write:false env (fun t ->
+      mdb_dbi_stat t db (addr stats)
+    ) ;
     make_stats stats
 
   let flags { env ; db } =
     let flags = alloc mdb_dbi_open_flag in
-    trivial_txn ~write:false env (fun t -> mdb_dbi_flags t db flags) ;
+    trivial_txn ~write:false env (fun t ->
+      mdb_dbi_flags t db flags
+    ) ;
     !@flags
 
   let drop ?(delete=false) { env ; db } =
-    trivial_txn ~write:true env (fun t -> mdb_drop t db delete)
+    trivial_txn ~write:true env (fun t ->
+      mdb_drop t db delete
+    )
 
   let get { db ; env } k =
     let v = addr @@ make mdb_val in
-    trivial_txn ~write:false env (fun t -> mdb_get t db (Key.write k) v) ;
+    trivial_txn ~write:false env (fun t ->
+      mdb_get t db (Key.write k) v)
+    ;
     Val.read v
 
-  let put ?(flags=UInt.zero) { db ; env } k v =
-    trivial_txn ~write:true env (fun t -> mdb_put t db (Key.write k) (Val.write v) flags)
+  let put ?(flags=PutFlags.none) { db ; env } k v =
+    trivial_txn ~write:true env (fun t ->
+      mdb_put t db (Key.write k) (Val.write v) flags
+    )
 
   let del ?v { db ; env } k =
     trivial_txn ~write:true env (fun t ->
