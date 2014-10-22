@@ -1,0 +1,25 @@
+opam-version: "1.2"
+maintainer: "Gabriel Radanne <drupyog@zoho.com>"
+authors: "Gabriel Radanne <drupyog@zoho.com>"
+license: "MIT"
+homepage: "https://github.com/Drup/ocaml-lmdb"
+bug-reports: "https://github.com/Drup/ocaml-lmdb/issues"
+dev-repo: "https://github.com/Drup/ocaml-lmdb.git"
+tags: [ "clib:lmdb" ]
+build: [
+  ["ocaml" "setup.ml" "-configure" "--prefix" prefix]
+  ["ocaml" "setup.ml" "-build"]
+]
+install: ["ocaml" "setup.ml" "-install"]
+remove: [
+  ["ocamlfind" "remove" "lmdb"]
+]
+build-doc: [ "ocaml" "setup.ml" "-doc" ]
+depends: [
+  "base-bytes"
+  "ctypes"
+  "ocamlfind" {build}
+
+  #Only for dev version.
+  "oasis" {build}
+]
