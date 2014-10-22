@@ -306,20 +306,21 @@ module Make (Key : Key.S) (Val : Val.S) = struct
       constraint 'a = [< `Read | `Write ]
 
     let go ?parent ~rw { env ; db } f =
-      let txn = alloc mdb_txn in
+      let ptr_txn = alloc mdb_txn in
       let parent = opt_map (fun x -> x.txn) parent in
       let txn_flag = match rw with
         | `Write -> Env.Flags.none
         | `Read -> Env.Flags.rdonly
       in
-      mdb_txn_begin env parent txn_flag txn ;
-      try match f { rw ; txn = !@txn ; db } with
-        | `Ok x -> mdb_txn_commit !@txn ; Some x
-        | `Abort -> mdb_txn_abort !@txn ; None
+      mdb_txn_begin env parent txn_flag ptr_txn ;
+      let txn = !@ptr_txn in
+      try match f { rw ; txn = txn ; db } with
+        | `Ok x -> mdb_txn_commit txn ; Some x
+        | `Abort -> mdb_txn_abort txn ; None
       with
-        | Abort t' when t' == !@txn || parent = None ->
-            mdb_txn_abort !@txn ; None
-        | exn -> mdb_txn_abort !@txn ; raise exn
+        | Abort t' when t' == txn || parent = None ->
+            mdb_txn_abort txn ; None
+        | exn -> mdb_txn_abort txn ; raise exn
 
     let abort { txn } = raise (Abort txn)
 
