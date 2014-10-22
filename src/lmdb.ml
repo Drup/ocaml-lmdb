@@ -354,6 +354,74 @@ module Make (Key : Key.S) (Val : Val.S) = struct
 
   end
 
+  module Cursor = struct
+
+    type t = mdb_cursor
+
+    type op =
+      | First
+      | Last
+      | Get
+      | Next
+      | Prev
+      | At of Key.t
+      | At_range of Key.t
+
+      (* Only for mdb_dupsort *)
+      | First_dup of Key.t
+      | Last_dup of Key.t
+      | Next_dup
+      | Prev_dup
+      | At_dup of Key.t * Val.t
+      | At_dup_range of Key.t * Val.t
+
+      (* Only for mdb_multiple *)
+      | Get_multiple
+      | Next_multiple
+
+    let to_op = function
+      | First -> MDB_FIRST
+      | Last -> MDB_LAST
+      | Get -> MDB_GET_CURRENT
+      | Next -> MDB_NEXT
+      | Prev -> MDB_PREV
+      | At _ -> MDB_SET
+      | At_range _ -> MDB_SET_RANGE
+
+      | First_dup _ -> MDB_FIRST_DUP
+      | Last_dup _ -> MDB_LAST_DUP
+      | Next_dup -> MDB_NEXT_DUP
+      | Prev_dup -> MDB_PREV_DUP
+      | At_dup _ -> MDB_GET_BOTH
+      | At_dup_range _ -> MDB_GET_BOTH_RANGE
+
+      | Get_multiple -> MDB_GET_MULTIPLE
+      | Next_multiple -> MDB_NEXT_MULTIPLE
+
+
+    let go {Txn. rw ; txn ; db } ~f =
+      let ptr_cursor = alloc mdb_cursor in
+      mdb_cursor_open txn db ptr_cursor ;
+      let cursor : t = !@ptr_cursor in
+      try
+        let res = f cursor in
+        mdb_cursor_close cursor ;
+        res
+      with exn -> mdb_cursor_close cursor ; raise exn
+
+    let put ?(flags=PutFlags.none) cursor k v =
+      mdb_cursor_put cursor (Key.write k) (Val.write v) flags
+
+    let del ?(all=false) cursor =
+      let flag = if all
+        then PutFlags.nodupdata
+        else PutFlags.none
+      in
+      mdb_cursor_del cursor flag
+
+
+  end
+
 end
 
 module Db = Make (Key.String) (Val.String)
