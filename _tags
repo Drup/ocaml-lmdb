@@ -1,4 +1,4 @@
 # OASIS_START
 # OASIS_STOP
 
-true: safe_string
+true: safe_string, short_paths
