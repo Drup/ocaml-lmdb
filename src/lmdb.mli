@@ -161,3 +161,7 @@ module Make (Key : Key.S) (Val : Val.S) : sig
 
   end
 end
+
+
+module Db : module type of Make (Key.String) (Val.String)
+module IntDb : module type of Make (Key.Int) (Val.String)
