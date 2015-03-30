@@ -1,3 +1,6 @@
+(** OCaml binding for LMDB. *)
+
+(** {2 Misc} *)
 
 type stats = {
   psize : int;
@@ -12,55 +15,56 @@ val version : unit -> string * int * int * int
 
 type env
 
+(** Operations on environment. *)
 module Env : sig
 
-    exception Assert of (env * string)
+  exception Assert of (env * string)
 
-    module Flags :  sig
-        type t
-        val ( + ) : t -> t -> t
-        val test : t -> t -> bool
-        val eq : t -> t -> bool
-        val none : t
+  module Flags :  sig
+    type t
+    val ( + ) : t -> t -> t
+    val test : t -> t -> bool
+    val eq : t -> t -> bool
+    val none : t
 
-        val fixedmap : t
-        val nosubdir : t
-        val nosync : t
-        val rdonly : t
-        val nometasync : t
-        val writemap : t
-        val mapasync : t
-        val notls : t
-        val nolock : t
-        val nordahead : t
-        val nomeminit : t
-    end
+    val fixedmap : t
+    val nosubdir : t
+    val nosync : t
+    val rdonly : t
+    val nometasync : t
+    val writemap : t
+    val mapasync : t
+    val notls : t
+    val nolock : t
+    val nordahead : t
+    val nomeminit : t
+  end
 
-    val create :
-      ?maxreaders:int -> ?mapsize:int -> ?maxdbs:int -> ?flags:Flags.t -> ?mode:int ->
-      string -> env
+  val create :
+    ?maxreaders:int -> ?mapsize:int -> ?maxdbs:int ->
+    ?flags:Flags.t -> ?mode:int -> string -> env
 
-    val copy : env -> string -> unit
+  val copy : env -> string -> unit
 
-    val copyfd : env -> Unix.file_descr -> unit
+  val copyfd : env -> Unix.file_descr -> unit
 
-    val stats : env -> stats
+  val stats : env -> stats
 
-    val set_flags : env -> Flags.t -> bool -> unit
+  val set_flags : env -> Flags.t -> bool -> unit
 
-    val flags : env -> Flags.t
+  val flags : env -> Flags.t
 
-    val path : env -> string
+  val path : env -> string
 
-    val fd : env -> Unix.file_descr
+  val fd : env -> Unix.file_descr
 
-    val max_readers : env -> int
+  val max_readers : env -> int
 
-    val max_keysize : env -> int
+  val max_keysize : env -> int
 
-    val reader_list : env -> string list
+  val reader_list : env -> string list
 
-    val readers : env -> int
+  val readers : env -> int
 
 end
 
