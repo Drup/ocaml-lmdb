@@ -176,7 +176,8 @@ end
 
 type db_val = (mdb_val, [ `Struct ]) structured ptr
 
-module Val = struct
+
+module Element = struct
 
   module type S = sig
     type t
@@ -187,7 +188,7 @@ module Val = struct
 
   module Int : S with type t = int = struct
     type t = int
-    let default_flags = Flags.integerkey
+    let default_flags = Flags.none
     let int_size = Size_t.of_int (sizeof camlint)
     let write i =
       let v = make mdb_val in
@@ -221,31 +222,32 @@ module Val = struct
   end
 
 
-end
-
-
-module Key = struct
-
-  module type S = Val.S
-
-  module Int : S with type t = int = struct
-    include Val.Int
-    let default_flags = Flags.integerkey
+  module Val = struct
+    module Int = Int
+    module String = String
   end
 
-  module String : S with type t = string = Val.String
+  module Key = struct
+    module Int = struct
+      include Val.Int
+      let default_flags = Flags.integerkey
+    end
+    module String = String
+  end
 
 end
-
 
 
 exception Abort of mdb_txn
 
-module Make (Key : Key.S) (Val : Val.S) = struct
+module Make (Key : Element.S) (Val : Element.S) = struct
 
   let def_flags = Flags.(Key.default_flags + Val.default_flags)
 
   type db = {env : env ; db : mdb_dbi }
+
+  type key = Key.t
+  type element = Val.t
 
   let create ?(create=true) ?name ?(flags=Flags.none) env =
     let db = alloc mdb_dbi in
@@ -319,7 +321,7 @@ module Make (Key : Key.S) (Val : Val.S) = struct
         | `Abort -> mdb_txn_abort txn ; None
       with
         | Abort t' when t' == txn || parent = None ->
-            mdb_txn_abort txn ; None
+          mdb_txn_abort txn ; None
         | exn -> mdb_txn_abort txn ; raise exn
 
     let abort { txn } = raise (Abort txn)
@@ -424,5 +426,5 @@ module Make (Key : Key.S) (Val : Val.S) = struct
 
 end
 
-module Db = Make (Key.String) (Val.String)
-module IntDb = Make (Key.Int) (Val.String)
+module Db = Make (Element.Key.String) (Element.Val.String)
+module IntDb = Make (Element.Key.Int) (Element.Val.String)

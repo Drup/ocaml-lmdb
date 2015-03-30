@@ -98,7 +98,7 @@ end
 
 type db_val
 
-module Key : sig
+module Element : sig
   module type S = sig
     type t
     val default_flags : Flags.t
@@ -106,27 +106,24 @@ module Key : sig
     val write : t -> db_val
   end
 
-  module Int : S with type t = int
-  module String : S with type t = string
-
-end
-
-module Val : sig
-  module type S = sig
-    type t
-    val default_flags : Flags.t
-    val read : db_val -> t
-    val write : t -> db_val
+  module Key : sig
+    module Int : S with type t = int
+    module String : S with type t = string
   end
 
-  module Int : S with type t = int
-  module String : S with type t = string
+  module Val : sig
+    module Int : S with type t = int
+    module String : S with type t = string
+  end
 
 end
 
-module Make (Key : Key.S) (Val : Val.S) : sig
+module Make (Key : Element.S) (Val : Element.S) : sig
 
   type db
+
+  type key = Key.t
+  type element = Val.t
 
   val create : ?create:bool -> ?name:string -> ?flags:Flags.t -> env -> db
 
@@ -163,5 +160,5 @@ module Make (Key : Key.S) (Val : Val.S) : sig
 end
 
 
-module Db : module type of Make (Key.String) (Val.String)
-module IntDb : module type of Make (Key.Int) (Val.String)
+module Db : module type of Make (Element.Key.String) (Element.Val.String)
+module IntDb : module type of Make (Element.Key.Int) (Element.Val.String)
