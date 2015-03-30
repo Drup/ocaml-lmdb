@@ -134,7 +134,7 @@ module Make (Key : Key.S) (Val : Val.S) : sig
   val flags : db -> Flags.t
   val drop : ?delete:bool -> db -> unit
   val get : db -> Key.t -> Val.t
-  val put : ?flags:Flags.t -> db -> Key.t -> Val.t -> unit
+  val put : ?flags:PutFlags.t -> db -> Key.t -> Val.t -> unit
   val del : ?v:Val.t -> db -> Key.t -> unit
 
   module Txn : sig
@@ -154,7 +154,7 @@ module Make (Key : Key.S) (Val : Val.S) : sig
     val drop : ?delete:bool -> [< `Write ] txn -> unit
 
     val get : 'a txn -> Key.t -> Val.t
-    val put : ?flags:Flags.t -> [> `Write ] txn -> Key.t -> Val.t -> unit
+    val put : ?flags:PutFlags.t -> [> `Write ] txn -> Key.t -> Val.t -> unit
     val del : ?v:Val.t -> [> `Write ] txn -> Key.t -> unit
 
     val env : 'a txn -> env
