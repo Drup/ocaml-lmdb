@@ -8,9 +8,10 @@ module Make (C : Cstubs.Types.TYPE) = struct
 
   type mdb_error = unit
   let mdb_error : mdb_error typ =
-    let read i =
-      if i = 0 then ()
-      else raise (Error i)
+    let read = function
+      | 0 -> ()
+      | -30798 -> raise Not_found
+      | i -> raise (Error i)
     in
     view ~read ~write:(fun () -> 0) int
 
