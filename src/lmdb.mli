@@ -75,7 +75,6 @@ module Env : sig
 
 end
 
-
 module PutFlags : sig
   type t
   val ( + ) : t -> t -> t
@@ -86,8 +85,6 @@ module PutFlags : sig
   val no_overwrite : t
   val no_dup_data : t
 end
-
-
 
 module type S = sig
 
@@ -103,7 +100,7 @@ module type S = sig
   val get : t -> key -> elt
   val put : ?flags:PutFlags.t -> t -> key -> elt -> unit
   val append : t -> key -> elt -> unit
-  val del : ?elt:elt -> t -> key -> unit
+  val remove : ?elt:elt -> t -> key -> unit
 
   val compare : t -> key -> key -> int
   (** The comparison function used by the database. *)
@@ -130,7 +127,7 @@ module type S = sig
     val get : 'a txn -> key -> elt
     val put : ?flags:PutFlags.t -> [> `Write ] txn -> key -> elt -> unit
     val append : [> `Write] txn -> key -> elt -> unit
-    val del : ?elt:elt -> [> `Write ] txn -> key -> unit
+    val remove : ?elt:elt -> [> `Write ] txn -> key -> unit
 
     val env : 'a txn -> Env.t
 
@@ -145,7 +142,7 @@ module type S = sig
     val get : _ t -> key * elt
     val put : ?flags:PutFlags.t -> [> `Write ] t -> key -> elt -> unit
     val put_here : ?flags:PutFlags.t -> [> `Write ] t -> key -> elt -> unit
-    val del : ?all:bool -> [> `Write ] t -> unit
+    val remove : ?all:bool -> [> `Write ] t -> unit
 
     val first : _ t -> key * elt
     val last : _ t -> key * elt

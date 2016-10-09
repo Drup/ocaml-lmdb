@@ -313,7 +313,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       mdb_put t db (Key.write k) (Elt.write v) flags
     )
 
-  let del ?elt { db ; env } k =
+  let remove ?elt { db ; env } k =
     trivial_txn ~write:true env (fun t ->
       match elt with
         | Some v -> mdb_del t db (Key.write k) (Elt.write v)
@@ -371,7 +371,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       in
       put ~flags t k v
 
-    let del ?elt { db ; txn } k =
+    let remove ?elt { db ; txn } k =
       match elt with
         | Some v -> mdb_del txn db (Key.write k) (Elt.write v)
         | None ->  mdb_del txn db (Key.write k) @@ from_voidp mdb_val null
@@ -414,7 +414,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
     let put_here ?(flags=PutFlags.none) cursor k v =
       put ~flags:PutFlags.(current + flags) cursor k v
 
-    let del ?(all=false) cursor =
+    let remove ?(all=false) cursor =
       let flag =
         if all
         then
@@ -486,7 +486,7 @@ module type S = sig
   val get : t -> key -> elt
   val put : ?flags:PutFlags.t -> t -> key -> elt -> unit
   val append : t -> key -> elt -> unit
-  val del : ?elt:elt -> t -> key -> unit
+  val remove : ?elt:elt -> t -> key -> unit
   val compare : t -> key -> key -> int
 
   module Txn : sig
@@ -506,7 +506,7 @@ module type S = sig
     val get : 'a txn -> key -> elt
     val put : ?flags:PutFlags.t -> [> `Write ] txn -> key -> elt -> unit
     val append : [> `Write] txn -> key -> elt -> unit
-    val del : ?elt:elt -> [> `Write ] txn -> key -> unit
+    val remove : ?elt:elt -> [> `Write ] txn -> key -> unit
     val env : 'a txn -> Env.t
 
   end
@@ -520,7 +520,7 @@ module type S = sig
     val get : _ t -> key * elt
     val put : ?flags:PutFlags.t -> [> `Write ] t -> key -> elt -> unit
     val put_here : ?flags:PutFlags.t -> [> `Write ] t -> key -> elt -> unit
-    val del : ?all:bool -> [> `Write ] t -> unit
+    val remove : ?all:bool -> [> `Write ] t -> unit
 
     val first : _ t -> key * elt
     val last : _ t -> key * elt
