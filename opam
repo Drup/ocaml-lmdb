@@ -24,3 +24,10 @@ depends: [
 
   "oasis" {dev & build}
 ]
+
+depexts: [
+  [["debian"] ["liblmdb-dev"]]
+  [["ubuntu"] ["liblmdb-dev"]]
+  [["archlinux"] ["lmdb"]]
+  [["homebrew" "osx"] ["lmdb"]]
+]
