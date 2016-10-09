@@ -25,11 +25,16 @@ let version () =
   let s = mdb_version major minor patch in
   (s, !@major, !@minor, !@patch)
 
+exception Error = Lmdb_types.Error
+
+let pp_error fmt i =
+  Format.fprintf fmt "%s@." (mdb_strerror i)
+
 module Env = struct
 
   type t = mdb_env
 
-  exception Assert of (t * string)
+  (* exception Assert of (t * string) *)
 
   module Flags = struct
     type t = mdb_env_flag
@@ -58,7 +63,7 @@ module Env = struct
     opt_iter (mdb_env_set_mapsize env) mapsize ;
     opt_iter (mdb_env_set_maxdbs env) maxdbs ;
     opt_iter (mdb_env_set_maxreaders env) maxreaders ;
-    mdb_env_set_assert env (fun env s -> raise (Assert (env,s))) ;
+    (* mdb_env_set_assert env (fun env s -> raise (Assert (env,s))) ; *)
     mdb_env_open env path flags mode ;
     Gc.finalise mdb_env_close env ;
     env

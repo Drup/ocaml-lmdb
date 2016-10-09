@@ -3,16 +3,6 @@ open Ctypes
 module T = Lmdb_types.Make(Lmdb_generated_types)
 open T
 
-(* Improve later *)
-type mdb_error = unit
-let mdb_error : mdb_error typ =
-  let read i =
-    if i = 0 then ()
-    else failwith (Printf.sprintf "Ldmb Error %i" i)
-  in
-  view ~read ~write:(fun () -> 0) int
-
-
 module Make (F: Cstubs.FOREIGN) = struct
   open F
 

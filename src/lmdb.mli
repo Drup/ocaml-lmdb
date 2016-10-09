@@ -1,11 +1,22 @@
 (** OCaml binding for LMDB. *)
 
+(** {2 Error reporting} *)
+
+type error = int
+(** Error return code. See Lmdb's documentation for details. *)
+
+exception Error of error
+(** Error are reported with this exception. *)
+
+val pp_error : Format.formatter -> error -> unit
+(** [pp_error Format.std_formatter e] will print a human-readable description
+    of the given error.
+*)
+
 (** Operations on environment. *)
 module Env : sig
 
   type t
-
-  exception Assert of (t * string)
 
   module Flags :  sig
     type t
