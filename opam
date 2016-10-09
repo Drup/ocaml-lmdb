@@ -5,6 +5,7 @@ license: "MIT"
 homepage: "https://github.com/Drup/ocaml-lmdb"
 bug-reports: "https://github.com/Drup/ocaml-lmdb/issues"
 dev-repo: "https://github.com/Drup/ocaml-lmdb.git"
+doc: "https://drup.github.io/ocaml-lmdb/dev/Lmdb.html"
 tags: [ "clib:lmdb" "database" ]
 build: [
   ["ocaml" "setup.ml" "-configure" "--prefix" prefix]
