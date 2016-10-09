@@ -83,9 +83,22 @@ module Env = struct
     Gc.finalise mdb_env_close env ;
     env
 
-  let copy = mdb_env_copy
+  module CopyFlags = struct
+    type t = mdb_copy_flag
+    let (+) = Unsigned.UInt.logor
+    let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
+    let eq f f' = Unsigned.UInt.(compare f f' = 0)
+    let none = Unsigned.UInt.zero
+    let compact   = mdb_CP_COMPACT
+  end
 
-  let copyfd env (fd : Unix.file_descr) = mdb_env_copyfd env (Obj.magic fd)
+  let copy ?(compact=false) db s =
+    let flag = if compact then CopyFlags.compact else CopyFlags.none in
+    mdb_env_copy2 db s flag
+
+  let copyfd ?(compact=false) env (fd : Unix.file_descr) =
+    let flag = if compact then CopyFlags.compact else CopyFlags.none in
+    mdb_env_copyfd2 env fd flag
 
   let stats env =
     let stats = make mdb_stat in

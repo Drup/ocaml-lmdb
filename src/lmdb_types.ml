@@ -95,6 +95,10 @@ module Make (C : Cstubs.Types.TYPE) = struct
   let mdb_APPENDDUP   = constant "MDB_APPENDDUP"    uint
   let mdb_MULTIPLE    = constant "MDB_MULTIPLE"     uint
 
+  type mdb_copy_flag = Unsigned.uint
+  let mdb_copy_flag = uint
+  let mdb_CP_COMPACT  = constant "MDB_CP_COMPACT"   mdb_copy_flag
+
   (* typedef struct MDB_cursor MDB_cursor; *)
   type mdb_cursor = unit ptr
   let mdb_cursor : mdb_cursor typ = ptr (typedef void "MDB_cursor")

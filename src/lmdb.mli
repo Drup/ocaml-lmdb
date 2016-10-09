@@ -44,9 +44,9 @@ module Env : sig
     ?maxreaders:int -> ?mapsize:int -> ?maxdbs:int ->
     ?flags:Flags.t -> ?mode:int -> string -> env
 
-  val copy : env -> string -> unit
+  val copy : ?compact:bool -> env -> string -> unit
 
-  val copyfd : env -> Unix.file_descr -> unit
+  val copyfd : ?compact:bool -> env -> Unix.file_descr -> unit
 
   val stats : env -> stats
 

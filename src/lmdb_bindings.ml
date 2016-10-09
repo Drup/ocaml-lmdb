@@ -40,13 +40,22 @@ module Make (F: Cstubs.FOREIGN) = struct
   let mdb_env_open =
     foreign "mdb_env_open" (mdb_env @-> string @-> mdb_env_flag @-> mdb_mode_t @-> ret_error)
 
-  (* int mdb_env_copy(MDB_env *env, const char *path); *)
-  let mdb_env_copy =
-    foreign "mdb_env_copy" (mdb_env @-> string @-> ret_error)
+  (* Superseeded by mdb_copy(fd)2 *)
+  (* (\* int mdb_env_copy(MDB_env *env, const char *path); *\) *)
+  (* let mdb_env_copy = *)
+  (*   foreign "mdb_env_copy" (mdb_env @-> string @-> ret_error) *)
 
-  (* int mdb_env_copyfd(MDB_env *env, mdb_filehandle_t fd); *)
-  let mdb_env_copyfd =
-    foreign "mdb_env_copyfd" (mdb_env @-> mdb_filehandle_t @-> ret_error)
+  (* (\* int mdb_env_copyfd(MDB_env *env, mdb_filehandle_t fd); *\) *)
+  (* let mdb_env_copyfd = *)
+  (*   foreign "mdb_env_copyfd" (mdb_env @-> mdb_filehandle_t @-> ret_error) *)
+
+  (* int  mdb_env_copy2(MDB_env *env, const char *path, unsigned int flags); *)
+  let mdb_env_copy2 =
+    foreign "mdb_env_copy2" (mdb_env @-> string @-> mdb_copy_flag @-> ret_error)
+
+  (* int  mdb_env_copyfd2(MDB_env *env, mdb_filehandle_t fd, unsigned int flags); *)
+  let mdb_env_copyfd2 =
+    foreign "mdb_env_copyfd2" (mdb_env @-> mdb_filehandle_t @-> mdb_copy_flag @-> ret_error)
 
   (* int mdb_env_stat(MDB_env *env, MDB_stat *stat); *)
   let mdb_env_stat =
