@@ -5,7 +5,7 @@ license: "MIT"
 homepage: "https://github.com/Drup/ocaml-lmdb"
 bug-reports: "https://github.com/Drup/ocaml-lmdb/issues"
 dev-repo: "https://github.com/Drup/ocaml-lmdb.git"
-tags: [ "clib:lmdb" ]
+tags: [ "clib:lmdb" "database" ]
 build: [
   ["ocaml" "setup.ml" "-configure" "--prefix" prefix]
   ["ocaml" "setup.ml" "-build"]
@@ -21,6 +21,5 @@ depends: [
   "ctypes-foreign"
   "ocamlfind" {build}
 
-  #Only for dev version.
-  "oasis" {build}
+  "oasis" {dev & build}
 ]
