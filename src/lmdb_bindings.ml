@@ -256,11 +256,11 @@ module Make (F: Cstubs.FOREIGN) = struct
 
   (* int mdb_cmp(MDB_txn *txn, MDB_dbi dbi, const MDB_val *a, const MDB_val *b); *)
   let mdb_cmp =
-    foreign "mdb_cmp" (mdb_txn @-> mdb_dbi @-> ptr mdb_val @-> ptr mdb_val @-> ret_error)
+    foreign "mdb_cmp" (mdb_txn @-> mdb_dbi @-> ptr mdb_val @-> ptr mdb_val @-> returning int)
 
   (* int mdb_dcmp(MDB_txn *txn, MDB_dbi dbi, const MDB_val *a, const MDB_val *b); *)
   let mdb_dcmp =
-    foreign "mdb_dcmp" (mdb_txn @-> mdb_dbi @-> ptr mdb_val @-> ptr mdb_val @-> ret_error)
+    foreign "mdb_dcmp" (mdb_txn @-> mdb_dbi @-> ptr mdb_val @-> ptr mdb_val @-> returning int)
 
   (** {3 Others} *)
 

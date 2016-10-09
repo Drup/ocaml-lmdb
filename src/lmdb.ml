@@ -148,8 +148,9 @@ let trivial_txn ~write env f =
     else Env.Flags.rdonly
   in
   mdb_txn_begin env None txn_flag txn ;
-  (f !@txn : unit) ;
-  mdb_txn_commit !@txn
+  let x = f !@txn in
+  mdb_txn_commit !@txn ;
+  x
 
 
 module PutFlags = struct
@@ -315,7 +316,7 @@ module Make (Key : Element.S) (Val : Element.S) = struct
 
   module Txn = struct
 
-    type 'a txn = { rw : 'a ; txn : mdb_txn ; db : mdb_dbi }
+    type 'a txn = { txn : mdb_txn ; db : mdb_dbi }
       constraint 'a = [< `Read | `Write ]
 
     let go ?parent ~rw { env ; db } f =
@@ -327,7 +328,7 @@ module Make (Key : Element.S) (Val : Element.S) = struct
       in
       mdb_txn_begin env parent txn_flag ptr_txn ;
       let txn = !@ptr_txn in
-      try match f { rw ; txn = txn ; db } with
+      try match f { txn = txn ; db } with
         | `Ok x -> mdb_txn_commit txn ; Some x
         | `Abort -> mdb_txn_abort txn ; None
       with
@@ -365,7 +366,18 @@ module Make (Key : Element.S) (Val : Element.S) = struct
 
     let env { txn } = mdb_txn_env txn
 
+    let compare ({ txn ; db } as t) x y =
+      let f = if Flags.(test dup_sort) @@ flags t then
+          mdb_dcmp
+        else
+          mdb_cmp
+      in
+      f txn db (Key.write x) (Key.write y)
+
   end
+
+  let compare {db ; env} x y =
+    trivial_txn ~write:false env @@ fun txn -> Txn.compare {Txn. db ; txn} x y
 
   module Cursor = struct
 
@@ -412,7 +424,7 @@ module Make (Key : Element.S) (Val : Element.S) = struct
       | Next_multiple -> MDB_NEXT_MULTIPLE
 
 
-    let go {Txn. rw ; txn ; db } ~f =
+    let go {Txn. txn ; db } ~f =
       let ptr_cursor = alloc mdb_cursor in
       mdb_cursor_open txn db ptr_cursor ;
       let cursor : t = !@ptr_cursor in

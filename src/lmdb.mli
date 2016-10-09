@@ -138,6 +138,9 @@ module Make (Key : Element.S) (Val : Element.S) : sig
   val put : ?flags:PutFlags.t -> db -> Key.t -> Val.t -> unit
   val del : ?v:Val.t -> db -> Key.t -> unit
 
+  val compare : db -> Key.t -> Key.t -> int
+  (** The comparison function used by the database. *)
+
   module Txn : sig
 
     type 'a txn constraint 'a = [< `Read | `Write ]
@@ -152,6 +155,10 @@ module Make (Key : Element.S) (Val : Element.S) : sig
 
     val stats : 'a txn -> stats
     val flags : 'a txn -> Flags.t
+
+    val compare : 'a txn -> Key.t -> Key.t -> int
+    (** The comparison function used by the database. *)
+
     val drop : ?delete:bool -> [< `Write ] txn -> unit
 
     val get : 'a txn -> Key.t -> Val.t
