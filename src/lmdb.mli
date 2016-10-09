@@ -2,13 +2,13 @@
 
 (** The {{:https://symas.com/products/lightning-memory-mapped-database/#overview}LMDB} database is a fast in-file database that supports ACID transactions.
 
-    This bindings attempts to expose a typesafe yet low-overhead API.
+    These bindings attempts to expose a typesafe yet low-overhead API.
 
     First, an environment must be open using {!Env.create}:
 
     {[let env = Env.create "mydb" ]}
 
-    Database implementations are both specialized by keys and values and answer the {!S} signature.
+    Database implementations are specialized both by keys and values and answer the {!S} signature.
     Two module are predefined:
     - {!Db} uses [string] keys and [string] values.
     - {!IntDb} uses [int] keys and [string] values.
