@@ -19,6 +19,7 @@ depends: [
   "base-bytes"
   "ctypes"
   "ctypes-foreign"
+  "unix-type-representations"
   "ocamlfind" {build}
 
   "oasis" {dev & build}

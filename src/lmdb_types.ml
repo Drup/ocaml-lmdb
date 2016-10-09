@@ -13,9 +13,9 @@ module Make (C : Cstubs.Types.TYPE) = struct
   type mdb_mode_t = PosixTypes.mode_t
   let mdb_mode_t = PosixTypes.mode_t
 
-  (* Unix.file_descr = int is not exported. *)
   let mdb_filehandle_t : Unix.file_descr typ =
-    view ~read:Obj.magic ~write:Obj.magic int
+    Unix_representations.
+      (view int ~read:file_descr_of_int ~write:int_of_file_descr)
 
   (* typedef struct MDB_txn MDB_txn; *)
   type mdb_txn = unit ptr
