@@ -169,7 +169,7 @@ module PutFlags = struct
   let _reserve     = mdb_RESERVE
   let append      = mdb_APPEND
   let append_dup   = mdb_APPENDDUP
-  let multiple    = mdb_MULTIPLE
+  let _multiple    = mdb_MULTIPLE
 end
 
 module Flags = struct
@@ -365,6 +365,12 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
     let put ?(flags=PutFlags.none) { db ; txn } k v =
       mdb_put txn db (Key.write k) (Elt.write v) flags
 
+    let append t k v =
+      let flags =
+        if has_dup_flag then PutFlags.append_dup else PutFlags.append
+      in
+      put ~flags t k v
+
     let del ?elt { db ; txn } k =
       match elt with
         | Some v -> mdb_del txn db (Key.write k) (Elt.write v)
@@ -381,6 +387,9 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       f txn db (Key.write x) (Key.write y)
 
   end
+
+  let append { db ; env } k v =
+    trivial_txn ~write:true env @@ fun txn -> Txn.append {Txn. db ; txn} k v
 
   let compare {db ; env} x y =
     trivial_txn ~write:false env @@ fun txn -> Txn.compare {Txn. db ; txn} x y
@@ -401,6 +410,9 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
     let put ?(flags=PutFlags.none) cursor k v =
       mdb_cursor_put cursor (Key.write k) (Elt.write v) flags
+
+    let put_here ?(flags=PutFlags.none) cursor k v =
+      put ~flags:PutFlags.(current + flags) cursor k v
 
     let del ?(all=false) cursor =
       let flag =
@@ -473,6 +485,7 @@ module type S = sig
   val drop : ?delete:bool -> t -> unit
   val get : t -> key -> elt
   val put : ?flags:PutFlags.t -> t -> key -> elt -> unit
+  val append : t -> key -> elt -> unit
   val del : ?elt:elt -> t -> key -> unit
   val compare : t -> key -> key -> int
 
@@ -492,6 +505,7 @@ module type S = sig
     val drop : ?delete:bool -> [< `Write ] txn -> unit
     val get : 'a txn -> key -> elt
     val put : ?flags:PutFlags.t -> [> `Write ] txn -> key -> elt -> unit
+    val append : [> `Write] txn -> key -> elt -> unit
     val del : ?elt:elt -> [> `Write ] txn -> key -> unit
     val env : 'a txn -> Env.t
 
@@ -505,6 +519,7 @@ module type S = sig
 
     val get : _ t -> key * elt
     val put : ?flags:PutFlags.t -> [> `Write ] t -> key -> elt -> unit
+    val put_here : ?flags:PutFlags.t -> [> `Write ] t -> key -> elt -> unit
     val del : ?all:bool -> [> `Write ] t -> unit
 
     val first : _ t -> key * elt

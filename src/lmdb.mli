@@ -85,10 +85,6 @@ module PutFlags : sig
 
   val no_overwrite : t
   val no_dup_data : t
-  val current : t
-  val append : t
-  val append_dup : t
-  val multiple : t
 end
 
 
@@ -106,6 +102,7 @@ module type S = sig
   val drop : ?delete:bool -> t -> unit
   val get : t -> key -> elt
   val put : ?flags:PutFlags.t -> t -> key -> elt -> unit
+  val append : t -> key -> elt -> unit
   val del : ?elt:elt -> t -> key -> unit
 
   val compare : t -> key -> key -> int
@@ -132,6 +129,7 @@ module type S = sig
 
     val get : 'a txn -> key -> elt
     val put : ?flags:PutFlags.t -> [> `Write ] txn -> key -> elt -> unit
+    val append : [> `Write] txn -> key -> elt -> unit
     val del : ?elt:elt -> [> `Write ] txn -> key -> unit
 
     val env : 'a txn -> Env.t
@@ -146,6 +144,7 @@ module type S = sig
 
     val get : _ t -> key * elt
     val put : ?flags:PutFlags.t -> [> `Write ] t -> key -> elt -> unit
+    val put_here : ?flags:PutFlags.t -> [> `Write ] t -> key -> elt -> unit
     val del : ?all:bool -> [> `Write ] t -> unit
 
     val first : _ t -> key * elt
