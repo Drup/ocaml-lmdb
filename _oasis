@@ -13,7 +13,7 @@ Library lmdb
   Path: src
   Modules: Lmdb
   InternalModules: Lmdb_types, Lmdb_bindings, Lmdb_generated, Lmdb_generated_types
-  BuildDepends: ctypes, ctypes.stubs
+  BuildDepends: ctypes, ctypes.stubs, ctypes.foreign
   CCLib: -llmdb
   CSources: lmdb_cstubs.c
 
@@ -22,7 +22,7 @@ Executable lmdb_gen
   Path: src
   CompiledObject: byte
   MainIs: lmdb_bindgen.ml
-  BuildDepends: ctypes.stubs
+  BuildDepends: ctypes.stubs, ctypes.foreign
 
 Executable lmdb_typegen
   Install: false

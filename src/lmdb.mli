@@ -62,7 +62,7 @@ module Env : sig
 
   val max_keysize : env -> int
 
-  (* val reader_list : env -> string list *)
+  val reader_list : env -> string list
 
   val readers : env -> int
 

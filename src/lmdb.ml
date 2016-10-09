@@ -78,7 +78,7 @@ module Env = struct
     opt_iter (mdb_env_set_mapsize env) mapsize ;
     opt_iter (mdb_env_set_maxdbs env) maxdbs ;
     opt_iter (mdb_env_set_maxreaders env) maxreaders ;
-    (* mdb_env_set_assert env (fun env s -> raise (Assert (env,s))) ; *)
+    mdb_env_set_assert env (fun env s -> raise (Assert (env,s))) ;
     mdb_env_open env path flags mode ;
     Gc.finalise mdb_env_close env ;
     env
@@ -115,10 +115,10 @@ module Env = struct
 
   let max_keysize = mdb_env_get_maxkeysize
 
-  (* let reader_list env = *)
-  (*   let x = ref [] in *)
-  (*   mdb_reader_list env (fun s _ -> x:=  s::!x ; 0) null ; *)
-  (*   !x *)
+  let reader_list env =
+    let x = ref [] in
+    mdb_reader_list env (fun s _ -> x:=  s::!x ; 0) null ;
+    !x
 
   let readers env =
     let i = alloc int in

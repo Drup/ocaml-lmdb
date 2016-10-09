@@ -13,8 +13,8 @@ let mdb_error : mdb_error typ =
   view ~read ~write:(fun () -> 0) int
 
 
-module Make (Foreign: Cstubs.FOREIGN) = struct
-  open Foreign
+module Make (F: Cstubs.FOREIGN) = struct
+  open F
 
   let ret_error = returning mdb_error
 
@@ -111,11 +111,12 @@ module Make (Foreign: Cstubs.FOREIGN) = struct
     foreign "mdb_env_get_userctx" (mdb_env @-> returning (ptr void))
 
   (* typedef void MDB_assert_func(MDB_env *env, const char *msg); *)
-  let mdb_assert_func = mdb_env @-> string @-> returning void
+  let mdb_assert_func = Ctypes.(mdb_env @-> string @-> returning void)
 
-  (* (\* int mdb_env_set_assert(MDB_env *env, MDB_assert_func *func); *\) *)
-  (* let mdb_env_set_assert = *)
-  (*   foreign "mdb_env_set_assert" (mdb_env @-> funptr mdb_assert_func @-> ret_error) *)
+  (* int mdb_env_set_assert(MDB_env *env, MDB_assert_func *func); *)
+  let mdb_env_set_assert =
+    foreign "mdb_env_set_assert"
+      (mdb_env @-> Foreign.funptr mdb_assert_func @-> ret_error)
 
   (** {3 Transactions} *)
 
@@ -168,17 +169,23 @@ module Make (Foreign: Cstubs.FOREIGN) = struct
 
   (** {4 Databases options} *)
 
-  (* (\* int mdb_set_compare(MDB_txn *txn, MDB_dbi dbi, MDB_cmp_func *cmp); *\) *)
-  (* let mdb_set_compare = *)
-  (*   foreign "mdb_set_compare" (mdb_txn @-> mdb_dbi @-> funptr mdb_cmp_func @-> ret_error) *)
+  let mdb_cmp_func =
+    Foreign.funptr Ctypes.( ptr mdb_val @-> ptr mdb_val @-> returning int)
+  let mdb_rel_func =
+    Foreign.funptr
+      Ctypes.(ptr mdb_val @-> ptr void @-> ptr void @-> ptr void @-> returning void)
 
-  (* (\* int mdb_set_dupsort(MDB_txn *txn, MDB_dbi dbi, MDB_cmp_func *cmp); *\) *)
-  (* let mdb_set_dupsort = *)
-  (*   foreign "mdb_set_dupsort" (mdb_txn @-> mdb_dbi @-> funptr mdb_cmp_func @-> ret_error) *)
+  (* int mdb_set_compare(MDB_txn *txn, MDB_dbi dbi, MDB_cmp_func *cmp); *)
+  let mdb_set_compare =
+    foreign "mdb_set_compare" (mdb_txn @-> mdb_dbi @-> mdb_cmp_func @-> ret_error)
 
-  (* (\* int mdb_set_relfunc(MDB_txn *txn, MDB_dbi dbi, MDB_rel_func *rel); *\) *)
-  (* let mdb_set_relfunc = *)
-  (*   foreign "mdb_set_relfunc" (mdb_txn @-> mdb_dbi @-> funptr mdb_rel_func @-> ret_error) *)
+  (* int mdb_set_dupsort(MDB_txn *txn, MDB_dbi dbi, MDB_cmp_func *cmp); *)
+  let mdb_set_dupsort =
+    foreign "mdb_set_dupsort" (mdb_txn @-> mdb_dbi @-> mdb_cmp_func @-> ret_error)
+
+  (* int mdb_set_relfunc(MDB_txn *txn, MDB_dbi dbi, MDB_rel_func *rel); *)
+  let mdb_set_relfunc =
+    foreign "mdb_set_relfunc" (mdb_txn @-> mdb_dbi @-> mdb_rel_func @-> ret_error)
 
   (* int mdb_set_relctx(MDB_txn *txn, MDB_dbi dbi, void *ctx); *)
   let mdb_set_relctx =
@@ -249,11 +256,12 @@ module Make (Foreign: Cstubs.FOREIGN) = struct
   (** {3 Others} *)
 
   (* typedef int (MDB_msg_func)(const char *msg, void *ctx); *)
-  let mdb_msg_func = string @-> ptr void @-> returning int
+  let mdb_msg_func =
+    Foreign.funptr Ctypes.(string @-> ptr void @-> returning int)
 
-  (* (\* int mdb_reader_list(MDB_env *env, MDB_msg_func *func, void *ctx); *\) *)
-  (* let mdb_reader_list = *)
-  (*   foreign "mdb_reader_list" (mdb_env @-> funptr mdb_msg_func @-> ptr void @-> ret_error) *)
+  (* int mdb_reader_list(MDB_env *env, MDB_msg_func *func, void *ctx); *)
+  let mdb_reader_list =
+    foreign "mdb_reader_list" (mdb_env @-> mdb_msg_func @-> ptr void @-> ret_error)
 
   (* int mdb_reader_check(MDB_env *env, int *dead); *)
   let mdb_reader_check =
