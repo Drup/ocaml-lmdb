@@ -2,7 +2,7 @@
 # OASIS_STOP
 
 true : bin_annot, safe_string, strict_sequence, short_paths
-not <src/*_generated*>: warn(A-40-42-44), warn_error(+1..49), warn_error(-45-3-32-37)
+not <src/*_generated*>: warn(A-40-42-44), warn_error(+1..49), warn_error(-45-3)
 
 # Better locations and loc in .mlis
 true: keep_locs

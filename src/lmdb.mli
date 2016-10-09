@@ -137,6 +137,38 @@ module type S = sig
     val env : 'a txn -> Env.t
 
   end
+
+  module Cursor : sig
+
+    type 'a t constraint 'a = [< `Read | `Write ]
+
+    val go : 'cap Txn.txn -> f:('cap t -> 'a) -> 'a
+
+    val get : _ t -> key * elt
+    val put : ?flags:PutFlags.t -> [> `Write ] t -> key -> elt -> unit
+    val del : ?all:bool -> [> `Write ] t -> unit
+
+    val first : _ t -> key * elt
+    val last : _ t -> key * elt
+    val next : _ t -> key * elt
+    val prev : _ t -> key * elt
+
+    val seek : _ t -> key -> elt
+    val seek_range : _ t -> key -> elt
+
+    (** {2 Operations on duplicated keys}
+
+        The following function raise {!Invalid_argument} if they are used on a
+        database that was not created with {!Flags.dup_sort}. *)
+
+    val first_dup : _ t -> key * elt
+    val last_dup : _ t -> key * elt
+    val next_dup : _ t -> key * elt
+    val prev_dup : _ t -> key * elt
+
+    val seek_dup : _ t -> key -> elt
+    val seek_range_dup : _ t -> key -> elt
+  end
 end
 
 

@@ -25,6 +25,8 @@ let version () =
   let s = mdb_version major minor patch in
   (s, !@major, !@minor, !@patch)
 
+type error = int
+
 exception Error = Lmdb_types.Error
 
 let pp_error fmt i =
@@ -258,6 +260,8 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
   let def_flags = Flags.(Key.default_flags + Elt.default_flags)
 
+  let has_dup_flag = Flags.(test dup_sort) def_flags
+
   type t = {env : Env.t ; db : mdb_dbi }
 
   type key = Key.t
@@ -383,53 +387,12 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
   module Cursor = struct
 
-    type t = mdb_cursor
-
-    type op =
-      | First
-      | Last
-      | Get
-      | Next
-      | Prev
-      | At of Key.t
-      | At_range of Key.t
-
-      (* Only for mdb_dupsort *)
-      | First_dup of Key.t
-      | Last_dup of Key.t
-      | Next_dup
-      | Prev_dup
-      | At_dup of Key.t * Elt.t
-      | At_dup_range of Key.t * Elt.t
-
-      (* Only for mdb_multiple *)
-      | Get_multiple
-      | Next_multiple
-
-    let to_op = function
-      | First -> MDB_FIRST
-      | Last -> MDB_LAST
-      | Get -> MDB_GET_CURRENT
-      | Next -> MDB_NEXT
-      | Prev -> MDB_PREV
-      | At _ -> MDB_SET
-      | At_range _ -> MDB_SET_RANGE
-
-      | First_dup _ -> MDB_FIRST_DUP
-      | Last_dup _ -> MDB_LAST_DUP
-      | Next_dup -> MDB_NEXT_DUP
-      | Prev_dup -> MDB_PREV_DUP
-      | At_dup _ -> MDB_GET_BOTH
-      | At_dup_range _ -> MDB_GET_BOTH_RANGE
-
-      | Get_multiple -> MDB_GET_MULTIPLE
-      | Next_multiple -> MDB_NEXT_MULTIPLE
-
+    type 'a t = mdb_cursor constraint 'a = [< `Read | `Write ]
 
     let go {Txn. txn ; db } ~f =
       let ptr_cursor = alloc mdb_cursor in
       mdb_cursor_open txn db ptr_cursor ;
-      let cursor : t = !@ptr_cursor in
+      let cursor : _ t = !@ptr_cursor in
       try
         let res = f cursor in
         mdb_cursor_close cursor ;
@@ -440,12 +403,53 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       mdb_cursor_put cursor (Key.write k) (Elt.write v) flags
 
     let del ?(all=false) cursor =
-      let flag = if all
-        then PutFlags.no_dup_data
+      let flag =
+        if all
+        then
+          if has_dup_flag then PutFlags.no_dup_data
+          else raise @@ Invalid_argument (Printf.sprintf
+                "Lmdb.Cursor.del: Optional argument ~all unsuported: \
+                 this database does not have the dupsort flag enabled.")
         else PutFlags.none
       in
       mdb_cursor_del cursor flag
 
+    let get_prim op cursor =
+      let k = addr @@ make mdb_val in
+      let v = addr @@ make mdb_val in
+      mdb_cursor_get cursor k v op ;
+      Key.read k, Elt.read v
+
+    let get = get_prim MDB_GET_CURRENT
+    let first = get_prim MDB_FIRST
+    let last = get_prim MDB_LAST
+    let next = get_prim MDB_NEXT
+    let prev = get_prim MDB_PREV
+
+    let seek_prim op cursor k =
+      let v = addr @@ make mdb_val in
+      mdb_cursor_get cursor (Key.write k) v op ;
+      Elt.read v
+
+    let seek = seek_prim MDB_SET
+    let seek_range = seek_prim MDB_SET_RANGE
+
+    let test_dup s f flag x =
+      if has_dup_flag then f flag x
+      else raise @@ Invalid_argument (Printf.sprintf
+            "Lmdb.Cursor.%s: Operation unsuported: this database does not have the \
+             dupsort flag enabled." s)
+
+    let first_dup = test_dup "first_dup" get_prim MDB_FIRST_DUP
+    let last_dup = test_dup "last_dup" get_prim MDB_LAST_DUP
+    let next_dup = test_dup "next_dup" get_prim MDB_NEXT_DUP
+    let prev_dup = test_dup "prev_dup" get_prim MDB_PREV_DUP
+
+    let seek_dup = test_dup "seek_dup" seek_prim MDB_GET_BOTH
+    let seek_range_dup = test_dup "seek_range_dup" seek_prim MDB_GET_BOTH_RANGE
+
+      (* | Get_multiple -> MDB_GET_MULTIPLE *)
+      (* | Next_multiple -> MDB_NEXT_MULTIPLE *)
 
   end
 
@@ -488,6 +492,34 @@ module type S = sig
     val put : ?flags:PutFlags.t -> [> `Write ] txn -> key -> elt -> unit
     val del : ?elt:elt -> [> `Write ] txn -> key -> unit
     val env : 'a txn -> Env.t
+
+  end
+
+  module Cursor : sig
+
+    type 'a t constraint 'a = [< `Read | `Write ]
+
+    val go : 'cap Txn.txn -> f:('cap t -> 'a) -> 'a
+
+    val get : _ t -> key * elt
+    val put : ?flags:PutFlags.t -> [> `Write ] t -> key -> elt -> unit
+    val del : ?all:bool -> [> `Write ] t -> unit
+
+    val first : _ t -> key * elt
+    val last : _ t -> key * elt
+    val next : _ t -> key * elt
+    val prev : _ t -> key * elt
+
+    val seek : _ t -> key -> elt
+    val seek_range : _ t -> key -> elt
+
+    val first_dup : _ t -> key * elt
+    val last_dup : _ t -> key * elt
+    val next_dup : _ t -> key * elt
+    val prev_dup : _ t -> key * elt
+
+    val seek_dup : _ t -> key -> elt
+    val seek_range_dup : _ t -> key -> elt
 
   end
 end
