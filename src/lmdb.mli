@@ -25,17 +25,17 @@ module Env : sig
     val eq : t -> t -> bool
     val none : t
 
-    val fixedmap : t
-    val nosubdir : t
-    val nosync : t
-    val rdonly : t
-    val nometasync : t
-    val writemap : t
-    val mapasync : t
-    val notls : t
-    val nolock : t
-    val nordahead : t
-    val nomeminit : t
+    val fixed_map : t
+    val no_subdir : t
+    val no_sync : t
+    val read_only : t
+    val no_meta_sync : t
+    val write_map : t
+    val map_async : t
+    val no_tls : t
+    val no_lock : t
+    val no_read_ahead : t
+    val no_mem_init : t
   end
 
   val create :

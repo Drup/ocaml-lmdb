@@ -44,17 +44,17 @@ module Env = struct
     let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
     let eq f f' = Unsigned.UInt.(compare f f' = 0)
     let none = Unsigned.UInt.zero
-    let fixedmap   = mdb_FIXEDMAP
-    let nosubdir   = mdb_NOSUBDIR
-    let nosync     = mdb_NOSYNC
-    let rdonly     = mdb_RDONLY
-    let nometasync = mdb_NOMETASYNC
-    let writemap   = mdb_NOMETASYNC
-    let mapasync   = mdb_MAPASYNC
-    let notls      = mdb_NOTLS
-    let nolock     = mdb_NOLOCK
-    let nordahead  = mdb_NORDAHEAD
-    let nomeminit  = mdb_NOMEMINIT
+    let fixed_map   = mdb_FIXEDMAP
+    let no_subdir   = mdb_NOSUBDIR
+    let no_sync     = mdb_NOSYNC
+    let read_only     = mdb_RDONLY
+    let no_meta_sync = mdb_NOMETASYNC
+    let write_map   = mdb_NOMETASYNC
+    let map_async   = mdb_MAPASYNC
+    let no_tls      = mdb_NOTLS
+    let no_lock     = mdb_NOLOCK
+    let no_read_ahead  = mdb_NORDAHEAD
+    let no_mem_init  = mdb_NOMEMINIT
   end
 
   let create ?maxreaders ?mapsize ?maxdbs ?(flags=Flags.none) ?(mode=0o755) path =
@@ -152,7 +152,7 @@ let trivial_txn ~write env f =
   let txn = alloc mdb_txn in
   let txn_flag = if write
     then Env.Flags.none
-    else Env.Flags.rdonly
+    else Env.Flags.read_only
   in
   mdb_txn_begin env None txn_flag txn ;
   let x = f !@txn in
@@ -333,7 +333,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       let parent = opt_map (fun x -> x.txn) parent in
       let txn_flag = match rw with
         | `Write -> Env.Flags.none
-        | `Read -> Env.Flags.rdonly
+        | `Read -> Env.Flags.read_only
       in
       mdb_txn_begin env parent txn_flag ptr_txn ;
       let txn = !@ptr_txn in
