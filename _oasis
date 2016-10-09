@@ -57,7 +57,7 @@ Executable "simple_db"
 
 
 AlphaFeatures: ocamlbuild_more_args
-Document lmdb
+Document api
   Install: false
   Type: ocamlbuild (0.3)
   BuildTools: ocamldoc
