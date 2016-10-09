@@ -1,0 +1,97 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<link rel="stylesheet" href="style.css" type="text/css">
+<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+<link rel="Start" href="index.html">
+<link rel="next" href="Lmdb.S.Cursor.html">
+<link rel="Up" href="Lmdb.S.html">
+<link title="Index of types" rel=Appendix href="index_types.html">
+<link title="Index of exceptions" rel=Appendix href="index_exceptions.html">
+<link title="Index of values" rel=Appendix href="index_values.html">
+<link title="Index of modules" rel=Appendix href="index_modules.html">
+<link title="Index of module types" rel=Appendix href="index_module_types.html">
+<link title="Lmdb" rel="Chapter" href="Lmdb.html"><link title="Misc" rel="Section" href="#2_Misc">
+<title>Lmdb.S.Txn</title>
+</head>
+<body>
+<div class="navbar">&nbsp;<a class="up" href="Lmdb.S.html" title="Lmdb.S">Up</a>
+&nbsp;<a class="post" href="Lmdb.S.Cursor.html" title="Lmdb.S.Cursor">Next</a>
+</div>
+<h1>Module <a href="type_Lmdb.S.Txn.html">Lmdb.S.Txn</a></h1>
+
+<pre><span class="keyword">module</span> Txn: <code class="code"><span class="keyword">sig</span></code> <a href="Lmdb.S.Txn.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><div class="info module top">
+A series of operation performed atomically.<br>
+</div>
+<hr width="100%">
+
+<pre><span id="TYPEtxn"><span class="keyword">type</span> <code class="type">[< `Read | `Write ]</code> txn</span> </pre>
+<div class="info ">
+A transaction handle. A transaction may be read-only or read-write.<br>
+</div>
+
+
+<pre><span id="VALgo"><span class="keyword">val</span> go</span> : <code class="type">?parent:([< `Read | `Write ] as 'a) <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -><br>       rw:'a -> <a href="Lmdb.S.html#TYPEt">Lmdb.S.t</a> -> ('a <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -> 'b) -> 'b option</code></pre><div class="info ">
+<code class="code">go ~rw db f</code> makes a transaction in <code class="code">db</code> with the permission <code class="code">rw</code>
+        and using the function <code class="code">f</code>.
+<p>
+
+        The function <code class="code">f</code> will receive the transaction handle.
+        All the operations called using the <a href="Lmdb.S.Txn.html"><code class="code"><span class="constructor">Lmdb</span>.<span class="constructor">S</span>.<span class="constructor">Txn</span></code></a> module will be executed when
+        <code class="code">f</code> returns.
+        The transaction handle should not be leaked outside of <code class="code">f</code>.
+<p>
+
+        Return <code class="code"><span class="constructor">None</span></code> if the transaction was aborted with <code class="code">abort</code>, and <code class="code"><span class="constructor">Some</span> v</code> otherwise.
+<p>
+
+        Here is an example incrementing a value atomically:
+        <pre class="codepre"><code class="code">go&nbsp;~rw:<span class="keywordsign">`</span><span class="constructor">Write</span>&nbsp;db&nbsp;<span class="keyword">begin</span>&nbsp;<span class="keyword">fun</span>&nbsp;txn&nbsp;<span class="keywordsign">-&gt;</span>
+&nbsp;&nbsp;<span class="keyword">let</span>&nbsp;v&nbsp;=&nbsp;get&nbsp;k&nbsp;<span class="keyword">in</span>
+&nbsp;&nbsp;put&nbsp;k&nbsp;(v+1)&nbsp;;
+&nbsp;&nbsp;v
+<span class="keyword">end</span>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></pre><br>
+</div>
+
+<pre><span id="VALabort"><span class="keyword">val</span> abort</span> : <code class="type">[< `Read | `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -> 'b</code></pre><div class="info ">
+<code class="code">abort txn</code> will abort the transaction.<br>
+</div>
+
+<pre><span id="VALget"><span class="keyword">val</span> get</span> : <code class="type">[< `Read | `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -> <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> <a href="Lmdb.S.html#TYPEelt">Lmdb.S.elt</a></code></pre><div class="info ">
+<code class="code">get txn k</code> returns the value associated to <code class="code">k</code>.<br>
+<b>Raises</b> <code>Not_found</code> if the key is not in the database.<br>
+</div>
+
+<pre><span id="VALput"><span class="keyword">val</span> put</span> : <code class="type">?flags:<a href="Lmdb.PutFlags.html#TYPEt">Lmdb.PutFlags.t</a> -><br>       [< `Read | `Write > `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -><br>       <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> <a href="Lmdb.S.html#TYPEelt">Lmdb.S.elt</a> -> unit</code></pre><div class="info ">
+<code class="code">put txn k v</code> associates the key <code class="code">k</code> to the value <code class="code">v</code>.<br>
+</div>
+<div class="param_info"><code class="code">flags</code> : Flags that allow to modify the behavior of <code class="code">put</code>.</div>
+
+<pre><span id="VALappend"><span class="keyword">val</span> append</span> : <code class="type">[< `Read | `Write > `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -><br>       <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> <a href="Lmdb.S.html#TYPEelt">Lmdb.S.elt</a> -> unit</code></pre><div class="info ">
+<code class="code">append txn k v</code> append <code class="code">k, v</code> at the end of the database without performing comparisons.
+<p>
+
+        Should only be used to quickly add already-sorted data to the database.<br>
+</div>
+
+<pre><span id="VALremove"><span class="keyword">val</span> remove</span> : <code class="type">?elt:<a href="Lmdb.S.html#TYPEelt">Lmdb.S.elt</a> -><br>       [< `Read | `Write > `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -> <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> unit</code></pre><div class="info ">
+<code class="code">remove txn k</code> removes <code class="code">k</code> from the database.
+<p>
+
+        If the database accepts duplicates:<ul>
+<li>if <code class="code">elt</code> is provided, only the specified binding is removed.</li>
+<li>if <code class="code">elt</code> is not provided, all the bindings with <code class="code">k</code> are removed.</li>
+</ul>
+<br>
+</div>
+<br>
+<h2 id="2_Misc">Misc</h2><br>
+
+<pre><span id="VALenv"><span class="keyword">val</span> env</span> : <code class="type">[< `Read | `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -> <a href="Lmdb.Env.html#TYPEt">Lmdb.Env.t</a></code></pre>
+<pre><span id="VALstats"><span class="keyword">val</span> stats</span> : <code class="type">[< `Read | `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -> <a href="Lmdb.Env.html#TYPEstats">Lmdb.Env.stats</a></code></pre>
+<pre><span id="VALcompare"><span class="keyword">val</span> compare</span> : <code class="type">[< `Read | `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -> <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> int</code></pre><div class="info ">
+The comparison function used by the database.<br>
+</div>
+
+<pre><span id="VALdrop"><span class="keyword">val</span> drop</span> : <code class="type">?delete:bool -> [< `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -> unit</code></pre></body></html>
