@@ -159,7 +159,7 @@ module type S = sig
     (** {2 Operations on duplicated keys}
 
         The following function raise {!Invalid_argument} if they are used on a
-        database that was not created with {!Flags.dup_sort}. *)
+        database that was not created with {!Values.Flags.dup_sort}. *)
 
     val first_dup : _ t -> key * elt
     val last_dup : _ t -> key * elt

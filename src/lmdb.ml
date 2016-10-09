@@ -448,8 +448,10 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
     let seek_dup = test_dup "seek_dup" seek_prim MDB_GET_BOTH
     let seek_range_dup = test_dup "seek_range_dup" seek_prim MDB_GET_BOTH_RANGE
 
-      (* | Get_multiple -> MDB_GET_MULTIPLE *)
-      (* | Next_multiple -> MDB_NEXT_MULTIPLE *)
+    (* The following two operations are not exposed, due to inherent unsafety:
+       - MDB_GET_MULTIPLE
+       - MDB_NEXT_MULTIPLE
+    *)
 
   end
 
