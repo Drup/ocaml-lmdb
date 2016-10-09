@@ -16,26 +16,6 @@ let opt_map f = function
   | None -> None
   | Some x -> Some (f x)
 
-(** Stat type *)
-
-type stats = {
-  psize : int ;
-  depth : int ;
-  branch_pages : int ;
-  leaf_pages : int ;
-  overflow_pages : int ;
-  entries : int ;
-}
-let make_stats stat = {
-  psize = getf stat ms_psize ;
-  depth = getf stat ms_depth ;
-  branch_pages = getf stat ms_branch_pages ;
-  leaf_pages = getf stat ms_leaf_pages ;
-  overflow_pages = getf stat ms_overflow_pages ;
-  entries = getf stat ms_entries ;
-}
-
-
 (** {2 High level binding} *)
 
 let version () =
@@ -45,11 +25,11 @@ let version () =
   let s = mdb_version major minor patch in
   (s, !@major, !@minor, !@patch)
 
-type env = mdb_env
-
 module Env = struct
 
-  exception Assert of (env * string)
+  type t = mdb_env
+
+  exception Assert of (t * string)
 
   module Flags = struct
     type t = mdb_env_flag
@@ -85,11 +65,8 @@ module Env = struct
 
   module CopyFlags = struct
     type t = mdb_copy_flag
-    let (+) = Unsigned.UInt.logor
-    let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
-    let eq f f' = Unsigned.UInt.(compare f f' = 0)
-    let none = Unsigned.UInt.zero
-    let compact   = mdb_CP_COMPACT
+    let none : t = Unsigned.UInt.zero
+    let compact = mdb_CP_COMPACT
   end
 
   let copy ?(compact=false) db s =
@@ -99,11 +76,6 @@ module Env = struct
   let copyfd ?(compact=false) env (fd : Unix.file_descr) =
     let flag = if compact then CopyFlags.compact else CopyFlags.none in
     mdb_env_copyfd2 env fd flag
-
-  let stats env =
-    let stats = make mdb_stat in
-    mdb_env_stat env (addr stats) ;
-    make_stats stats
 
   let set_flags = mdb_env_set_flags
   let flags env =
@@ -138,6 +110,31 @@ module Env = struct
     mdb_reader_check env i ;
     !@i
 
+  (** Stat type *)
+
+  type stats = {
+    psize : int ;
+    depth : int ;
+    branch_pages : int ;
+    leaf_pages : int ;
+    overflow_pages : int ;
+    entries : int ;
+  }
+  let make_stats stat = {
+    psize = getf stat ms_psize ;
+    depth = getf stat ms_depth ;
+    branch_pages = getf stat ms_branch_pages ;
+    leaf_pages = getf stat ms_leaf_pages ;
+    overflow_pages = getf stat ms_overflow_pages ;
+    entries = getf stat ms_entries ;
+  }
+
+
+  let stats env =
+    let stats = make mdb_stat in
+    mdb_env_stat env (addr stats) ;
+    make_stats stats
+
 end
 
 (* Use internally for trivial functions *)
@@ -159,12 +156,12 @@ module PutFlags = struct
   let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
   let eq f f' = Unsigned.UInt.(compare f f' = 0)
   let none = Unsigned.UInt.zero
-  let nooverwrite = mdb_NOOVERWRITE
-  let nodupdata   = mdb_NODUPDATA
+  let no_overwrite = mdb_NOOVERWRITE
+  let no_dup_data   = mdb_NODUPDATA
   let current     = mdb_CURRENT
-  let reserve     = mdb_RESERVE
+  let _reserve     = mdb_RESERVE
   let append      = mdb_APPEND
-  let appenddup   = mdb_APPENDDUP
+  let append_dup   = mdb_APPENDDUP
   let multiple    = mdb_MULTIPLE
 end
 
@@ -174,22 +171,22 @@ module Flags = struct
   let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
   let eq f f' = Unsigned.UInt.(compare f f' = 0)
   let none = Unsigned.UInt.zero
-  let reversekey = mdb_REVERSEKEY
-  let dupsort    = mdb_DUPSORT
-  let dupfixed   = mdb_DUPFIXED
-  let integerdup = mdb_INTEGERDUP
-  let reversedup = mdb_REVERSEDUP
+  let reverse_key = mdb_REVERSEKEY
+  let dup_sort    = mdb_DUPSORT
+  let dup_fixed   = mdb_DUPFIXED
+  let integer_dup = mdb_INTEGERDUP
+  let reverse_dup = mdb_REVERSEDUP
+  let integer_key = mdb_INTEGERKEY
 
   (* Not exported *)
-  let integerkey = mdb_INTEGERKEY
   let create     = mdb_CREATE
 end
 
+module Values = struct
 
-type db_val = (mdb_val, [ `Struct ]) structured ptr
+  module Flags = Flags
 
-
-module Element = struct
+  type db_val = (mdb_val, [ `Struct ]) structured ptr
 
   module type S = sig
     type t
@@ -234,15 +231,15 @@ module Element = struct
   end
 
 
-  module Val = struct
+  module Elt = struct
     module Int = Int
     module String = String
   end
 
   module Key = struct
     module Int = struct
-      include Val.Int
-      let default_flags = Flags.integerkey
+      include Elt.Int
+      let default_flags = Flags.integer_key
     end
     module String = String
   end
@@ -252,21 +249,21 @@ end
 
 exception Abort of mdb_txn
 
-module Make (Key : Element.S) (Val : Element.S) = struct
+module Make (Key : Values.S) (Elt : Values.S) = struct
 
-  let def_flags = Flags.(Key.default_flags + Val.default_flags)
+  let def_flags = Flags.(Key.default_flags + Elt.default_flags)
 
-  type db = {env : env ; db : mdb_dbi }
+  type t = {env : Env.t ; db : mdb_dbi }
 
   type key = Key.t
-  type element = Val.t
+  type elt = Elt.t
 
-  let create ?(create=true) ?name ?(flags=Flags.none) env =
+  let create ?(create=true) ?name env =
     let db = alloc mdb_dbi in
     let flags =
       if create
-      then Flags.(flags + create + def_flags)
-      else Flags.(flags + def_flags)
+      then Flags.(create + def_flags)
+      else def_flags
     in
     let f txn = mdb_dbi_open txn name flags db in
     trivial_txn ~write:create env f ;
@@ -281,9 +278,9 @@ module Make (Key : Element.S) (Val : Element.S) = struct
     trivial_txn ~write:false env (fun t ->
       mdb_dbi_stat t db (addr stats)
     ) ;
-    make_stats stats
+    Env.make_stats stats
 
-  let flags { env ; db } =
+  let _flags { env ; db } =
     let flags = alloc mdb_dbi_open_flag in
     trivial_txn ~write:false env (fun t ->
       mdb_dbi_flags t db flags
@@ -300,17 +297,17 @@ module Make (Key : Element.S) (Val : Element.S) = struct
     trivial_txn ~write:false env (fun t ->
       mdb_get t db (Key.write k) v)
     ;
-    Val.read v
+    Elt.read v
 
   let put ?(flags=PutFlags.none) { db ; env } k v =
     trivial_txn ~write:true env (fun t ->
-      mdb_put t db (Key.write k) (Val.write v) flags
+      mdb_put t db (Key.write k) (Elt.write v) flags
     )
 
-  let del ?v { db ; env } k =
+  let del ?elt { db ; env } k =
     trivial_txn ~write:true env (fun t ->
-      match v with
-        | Some v -> mdb_del t db (Key.write k) (Val.write v)
+      match elt with
+        | Some v -> mdb_del t db (Key.write k) (Elt.write v)
         | None ->  mdb_del t db (Key.write k) @@ from_voidp mdb_val null
     )
 
@@ -336,12 +333,12 @@ module Make (Key : Element.S) (Val : Element.S) = struct
           mdb_txn_abort txn ; None
         | exn -> mdb_txn_abort txn ; raise exn
 
-    let abort { txn } = raise (Abort txn)
+    let abort { txn ; _ } = raise (Abort txn)
 
     let stats { txn ; db } =
       let stats = make mdb_stat in
       mdb_dbi_stat txn db (addr stats) ;
-      make_stats stats
+      Env.make_stats stats
 
     let flags { txn ; db } =
       let flags = alloc mdb_dbi_open_flag in
@@ -354,17 +351,17 @@ module Make (Key : Element.S) (Val : Element.S) = struct
     let get { db ; txn } k =
       let v = addr @@ make mdb_val in
       mdb_get txn db (Key.write k) v ;
-      Val.read v
+      Elt.read v
 
     let put ?(flags=PutFlags.none) { db ; txn } k v =
-      mdb_put txn db (Key.write k) (Val.write v) flags
+      mdb_put txn db (Key.write k) (Elt.write v) flags
 
-    let del ?v { db ; txn } k =
-      match v with
-        | Some v -> mdb_del txn db (Key.write k) (Val.write v)
+    let del ?elt { db ; txn } k =
+      match elt with
+        | Some v -> mdb_del txn db (Key.write k) (Elt.write v)
         | None ->  mdb_del txn db (Key.write k) @@ from_voidp mdb_val null
 
-    let env { txn } = mdb_txn_env txn
+    let env { txn ; _ } = mdb_txn_env txn
 
     let compare ({ txn ; db } as t) x y =
       let f = if Flags.(test dup_sort) @@ flags t then
@@ -397,8 +394,8 @@ module Make (Key : Element.S) (Val : Element.S) = struct
       | Last_dup of Key.t
       | Next_dup
       | Prev_dup
-      | At_dup of Key.t * Val.t
-      | At_dup_range of Key.t * Val.t
+      | At_dup of Key.t * Elt.t
+      | At_dup_range of Key.t * Elt.t
 
       (* Only for mdb_multiple *)
       | Get_multiple
@@ -435,11 +432,11 @@ module Make (Key : Element.S) (Val : Element.S) = struct
       with exn -> mdb_cursor_close cursor ; raise exn
 
     let put ?(flags=PutFlags.none) cursor k v =
-      mdb_cursor_put cursor (Key.write k) (Val.write v) flags
+      mdb_cursor_put cursor (Key.write k) (Elt.write v) flags
 
     let del ?(all=false) cursor =
       let flag = if all
-        then PutFlags.nodupdata
+        then PutFlags.no_dup_data
         else PutFlags.none
       in
       mdb_cursor_del cursor flag
@@ -449,5 +446,43 @@ module Make (Key : Element.S) (Val : Element.S) = struct
 
 end
 
-module Db = Make (Element.Key.String) (Element.Val.String)
-module IntDb = Make (Element.Key.Int) (Element.Val.String)
+module Db = Make (Values.Key.String) (Values.Elt.String)
+module IntDb = Make (Values.Key.Int) (Values.Elt.String)
+
+
+module type S = sig
+
+  type t
+
+  type key
+  type elt
+
+  val create : ?create:bool -> ?name:string -> Env.t -> t
+  val stats : t -> Env.stats
+  val drop : ?delete:bool -> t -> unit
+  val get : t -> key -> elt
+  val put : ?flags:PutFlags.t -> t -> key -> elt -> unit
+  val del : ?elt:elt -> t -> key -> unit
+  val compare : t -> key -> key -> int
+
+  module Txn : sig
+
+    type 'a txn constraint 'a = [< `Read | `Write ]
+
+    val go :
+      ?parent:([< `Read | `Write ] as 'a) txn ->
+      rw:'a ->
+      t ->
+      ('a txn -> [< `Abort | `Ok of 'b ]) -> 'b option
+
+    val abort : 'a txn -> 'b
+    val stats : 'a txn -> Env.stats
+    val compare : 'a txn -> key -> key -> int
+    val drop : ?delete:bool -> [< `Write ] txn -> unit
+    val get : 'a txn -> key -> elt
+    val put : ?flags:PutFlags.t -> [> `Write ] txn -> key -> elt -> unit
+    val del : ?elt:elt -> [> `Write ] txn -> key -> unit
+    val env : 'a txn -> Env.t
+
+  end
+end

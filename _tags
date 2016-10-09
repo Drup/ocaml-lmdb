@@ -1,4 +1,8 @@
 # OASIS_START
 # OASIS_STOP
 
-true: safe_string, short_paths
+true : bin_annot, safe_string, strict_sequence, short_paths
+not <src/*_generated*>: warn(A-40-42-44), warn_error(+1..49), warn_error(-45-3-32-37)
+
+# Better locations and loc in .mlis
+true: keep_locs

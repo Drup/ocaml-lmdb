@@ -1,24 +1,11 @@
 (** OCaml binding for LMDB. *)
 
-(** {2 Misc} *)
-
-type stats = {
-  psize : int;
-  depth : int;
-  branch_pages : int;
-  leaf_pages : int;
-  overflow_pages : int;
-  entries : int;
-}
-
-val version : unit -> string * int * int * int
-
-type env
-
 (** Operations on environment. *)
 module Env : sig
 
-  exception Assert of (env * string)
+  type t
+
+  exception Assert of (t * string)
 
   module Flags :  sig
     type t
@@ -42,29 +29,38 @@ module Env : sig
 
   val create :
     ?maxreaders:int -> ?mapsize:int -> ?maxdbs:int ->
-    ?flags:Flags.t -> ?mode:int -> string -> env
+    ?flags:Flags.t -> ?mode:int -> string -> t
 
-  val copy : ?compact:bool -> env -> string -> unit
+  val copy : ?compact:bool -> t -> string -> unit
 
-  val copyfd : ?compact:bool -> env -> Unix.file_descr -> unit
+  val copyfd : ?compact:bool -> t -> Unix.file_descr -> unit
 
-  val stats : env -> stats
+  val set_flags : t -> Flags.t -> bool -> unit
 
-  val set_flags : env -> Flags.t -> bool -> unit
+  val flags : t -> Flags.t
 
-  val flags : env -> Flags.t
+  val path : t -> string
 
-  val path : env -> string
+  val fd : t -> Unix.file_descr
 
-  val fd : env -> Unix.file_descr
+  type stats = {
+    psize : int;
+    depth : int;
+    branch_pages : int;
+    leaf_pages : int;
+    overflow_pages : int;
+    entries : int;
+  }
 
-  val max_readers : env -> int
+  val stats : t -> stats
 
-  val max_keysize : env -> int
+  val max_readers : t -> int
 
-  val reader_list : env -> string list
+  val max_keysize : t -> int
 
-  val readers : env -> int
+  val reader_list : t -> string list
+
+  val readers : t -> int
 
 end
 
@@ -76,33 +72,87 @@ module PutFlags : sig
   val eq : t -> t -> bool
   val none : t
 
-  val nooverwrite : t
-  val nodupdata : t
+  val no_overwrite : t
+  val no_dup_data : t
   val current : t
   val append : t
-  val appenddup : t
+  val append_dup : t
   val multiple : t
 end
 
 
-module Flags : sig
-  type t
-  val ( + ) : t -> t -> t
-  val test : t -> t -> bool
-  val eq : t -> t -> bool
-  val none : t
 
-  val reversekey : t
-  val dupsort : t
-  val dupfixed : t
-  val integerdup : t
-  val reversedup : t
+module type S = sig
+
+  type t
+
+  type key
+  type elt
+
+  val create : ?create:bool -> ?name:string -> Env.t -> t
+
+  val stats : t -> Env.stats
+  val drop : ?delete:bool -> t -> unit
+  val get : t -> key -> elt
+  val put : ?flags:PutFlags.t -> t -> key -> elt -> unit
+  val del : ?elt:elt -> t -> key -> unit
+
+  val compare : t -> key -> key -> int
+  (** The comparison function used by the database. *)
+
+  module Txn : sig
+
+    type 'a txn constraint 'a = [< `Read | `Write ]
+
+    val go :
+      ?parent:([< `Read | `Write ] as 'a) txn ->
+      rw:'a ->
+      t ->
+      ('a txn -> [< `Abort | `Ok of 'b ]) -> 'b option
+
+    val abort : 'a txn -> 'b
+
+    val stats : 'a txn -> Env.stats
+
+    val compare : 'a txn -> key -> key -> int
+    (** The comparison function used by the database. *)
+
+    val drop : ?delete:bool -> [< `Write ] txn -> unit
+
+    val get : 'a txn -> key -> elt
+    val put : ?flags:PutFlags.t -> [> `Write ] txn -> key -> elt -> unit
+    val del : ?elt:elt -> [> `Write ] txn -> key -> unit
+
+    val env : 'a txn -> Env.t
+
+  end
 end
 
 
-type db_val
+module Db : S with type key = string and type elt = string
+module IntDb : S with type key = int and type elt = string
 
-module Element : sig
+(** {2 Databases with custom datatypes} *)
+
+module Values : sig
+
+  module Flags : sig
+    type t
+    val ( + ) : t -> t -> t
+    val test : t -> t -> bool
+    val eq : t -> t -> bool
+    val none : t
+
+    val reverse_key : t
+    val dup_sort : t
+    val dup_fixed : t
+    val integer_dup : t
+    val reverse_dup : t
+    val integer_key : t
+  end
+
+  type db_val
+
   module type S = sig
     type t
     val default_flags : Flags.t
@@ -115,61 +165,15 @@ module Element : sig
     module String : S with type t = string
   end
 
-  module Val : sig
+  module Elt : sig
     module Int : S with type t = int
     module String : S with type t = string
   end
 
 end
 
-module Make (Key : Element.S) (Val : Element.S) : sig
+module Make (Key : Values.S) (Elt : Values.S) :
+  S with type key = Key.t
+     and type elt = Elt.t
 
-  type db
-
-  type key = Key.t
-  type element = Val.t
-
-  val create : ?create:bool -> ?name:string -> ?flags:Flags.t -> env -> db
-
-  val stats : db -> stats
-  val flags : db -> Flags.t
-  val drop : ?delete:bool -> db -> unit
-  val get : db -> Key.t -> Val.t
-  val put : ?flags:PutFlags.t -> db -> Key.t -> Val.t -> unit
-  val del : ?v:Val.t -> db -> Key.t -> unit
-
-  val compare : db -> Key.t -> Key.t -> int
-  (** The comparison function used by the database. *)
-
-  module Txn : sig
-
-    type 'a txn constraint 'a = [< `Read | `Write ]
-
-    val go :
-      ?parent:([< `Read | `Write ] as 'a) txn ->
-      rw:'a ->
-      db ->
-      ('a txn -> [< `Abort | `Ok of 'b ]) -> 'b option
-
-    val abort : 'a txn -> 'b
-
-    val stats : 'a txn -> stats
-    val flags : 'a txn -> Flags.t
-
-    val compare : 'a txn -> Key.t -> Key.t -> int
-    (** The comparison function used by the database. *)
-
-    val drop : ?delete:bool -> [< `Write ] txn -> unit
-
-    val get : 'a txn -> Key.t -> Val.t
-    val put : ?flags:PutFlags.t -> [> `Write ] txn -> Key.t -> Val.t -> unit
-    val del : ?v:Val.t -> [> `Write ] txn -> Key.t -> unit
-
-    val env : 'a txn -> env
-
-  end
-end
-
-
-module Db : module type of Make (Element.Key.String) (Element.Val.String)
-module IntDb : module type of Make (Element.Key.Int) (Element.Val.String)
+val version : unit -> string * int * int * int
