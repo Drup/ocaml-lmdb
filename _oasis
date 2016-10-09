@@ -12,10 +12,25 @@ Plugins: META (0.4), DevFiles (0.4)
 Library lmdb
   Path: src
   Modules: Lmdb
-  InternalModules: Lmdb_internal
-  BuildDepends: ctypes, ctypes.foreign
+  InternalModules: Lmdb_types, Lmdb_bindings, Lmdb_generated, Lmdb_generated_types
+  BuildDepends: ctypes, ctypes.stubs
   CCLib: -llmdb
-  CCOpt: -O2 -Wall -Wextra -Wno-unused-parameter
+  CSources: lmdb_cstubs.c
+
+Executable lmdb_gen
+  Install: false
+  Path: src
+  CompiledObject: byte
+  MainIs: lmdb_bindgen.ml
+  BuildDepends: ctypes.stubs
+
+Executable lmdb_typegen
+  Install: false
+  Path: src
+  CompiledObject: byte
+  MainIs: lmdb_typegen.ml
+  BuildDepends: ctypes.stubs
+
 
 Executable "version"
   Path: tests
@@ -29,7 +44,7 @@ Test "version"
   Run$: flag(tests)
   TestTools: version
   Command: $version
-  WorkingDirectory: /tmp
+  WorkingDirectory: _build
 
 
 Executable "simple_db"

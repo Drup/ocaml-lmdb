@@ -2,8 +2,9 @@ open Ctypes
 open PosixTypes
 open Unsigned
 
-module Internal = Lmdb_internal
-open Internal
+module S = Lmdb_bindings.Make(Lmdb_generated)
+open S
+open Lmdb_bindings.T
 
 let alloc = allocate_n ~count:1
 
@@ -52,22 +53,21 @@ module Env = struct
 
   module Flags = struct
     type t = mdb_env_flag
-    let i = Unsigned.UInt.of_int
     let (+) = Unsigned.UInt.logor
     let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
     let eq f f' = Unsigned.UInt.(compare f f' = 0)
     let none = Unsigned.UInt.zero
-    let fixedmap   = i mdb_FIXEDMAP
-    let nosubdir   = i mdb_NOSUBDIR
-    let nosync     = i mdb_NOSYNC
-    let rdonly     = i mdb_RDONLY
-    let nometasync = i mdb_NOMETASYNC
-    let writemap   = i mdb_NOMETASYNC
-    let mapasync   = i mdb_MAPASYNC
-    let notls      = i mdb_NOTLS
-    let nolock     = i mdb_NOLOCK
-    let nordahead  = i mdb_NORDAHEAD
-    let nomeminit  = i mdb_NOMEMINIT
+    let fixedmap   = mdb_FIXEDMAP
+    let nosubdir   = mdb_NOSUBDIR
+    let nosync     = mdb_NOSYNC
+    let rdonly     = mdb_RDONLY
+    let nometasync = mdb_NOMETASYNC
+    let writemap   = mdb_NOMETASYNC
+    let mapasync   = mdb_MAPASYNC
+    let notls      = mdb_NOTLS
+    let nolock     = mdb_NOLOCK
+    let nordahead  = mdb_NORDAHEAD
+    let nomeminit  = mdb_NOMEMINIT
   end
 
   let create ?maxreaders ?mapsize ?maxdbs ?(flags=Flags.none) ?(mode=0o755) path =
@@ -78,7 +78,7 @@ module Env = struct
     opt_iter (mdb_env_set_mapsize env) mapsize ;
     opt_iter (mdb_env_set_maxdbs env) maxdbs ;
     opt_iter (mdb_env_set_maxreaders env) maxreaders ;
-    mdb_env_set_assert env (fun env s -> raise (Assert (env,s))) ;
+    (* mdb_env_set_assert env (fun env s -> raise (Assert (env,s))) ; *)
     mdb_env_open env path flags mode ;
     Gc.finalise mdb_env_close env ;
     env
@@ -115,10 +115,10 @@ module Env = struct
 
   let max_keysize = mdb_env_get_maxkeysize
 
-  let reader_list env =
-    let x = ref [] in
-    mdb_reader_list env (fun s _ -> x:=  s::!x ; 0) null ;
-    !x
+  (* let reader_list env = *)
+  (*   let x = ref [] in *)
+  (*   mdb_reader_list env (fun s _ -> x:=  s::!x ; 0) null ; *)
+  (*   !x *)
 
   let readers env =
     let i = alloc int in
@@ -141,36 +141,34 @@ let trivial_txn ~write env f =
 
 module PutFlags = struct
   type t = mdb_put_flag
-  let i = Unsigned.UInt.of_int
   let (+) = Unsigned.UInt.logor
   let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
   let eq f f' = Unsigned.UInt.(compare f f' = 0)
   let none = Unsigned.UInt.zero
-  let nooverwrite = i mdb_NOOVERWRITE
-  let nodupdata   = i mdb_NODUPDATA
-  let current     = i mdb_CURRENT
-  let reserve     = i mdb_RESERVE
-  let append      = i mdb_APPEND
-  let appenddup   = i mdb_APPENDDUP
-  let multiple    = i mdb_MULTIPLE
+  let nooverwrite = mdb_NOOVERWRITE
+  let nodupdata   = mdb_NODUPDATA
+  let current     = mdb_CURRENT
+  let reserve     = mdb_RESERVE
+  let append      = mdb_APPEND
+  let appenddup   = mdb_APPENDDUP
+  let multiple    = mdb_MULTIPLE
 end
 
 module Flags = struct
   type t = mdb_env_flag
-  let i = Unsigned.UInt.of_int
   let (+) = Unsigned.UInt.logor
   let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
   let eq f f' = Unsigned.UInt.(compare f f' = 0)
   let none = Unsigned.UInt.zero
-  let reversekey = i mdb_REVERSEKEY
-  let dupsort    = i mdb_DUPSORT
-  let dupfixed   = i mdb_DUPFIXED
-  let integerdup = i mdb_INTEGERDUP
-  let reversedup = i mdb_REVERSEDUP
+  let reversekey = mdb_REVERSEKEY
+  let dupsort    = mdb_DUPSORT
+  let dupfixed   = mdb_DUPFIXED
+  let integerdup = mdb_INTEGERDUP
+  let reversedup = mdb_REVERSEDUP
 
   (* Not exported *)
-  let integerkey = i mdb_INTEGERKEY
-  let create     = i mdb_CREATE
+  let integerkey = mdb_INTEGERKEY
+  let create     = mdb_CREATE
 end
 
 

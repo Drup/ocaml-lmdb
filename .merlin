@@ -4,4 +4,4 @@ B _build/src
 B _build/tests
 
 PKG ctypes
-PKG ctypes.foreign
+PKG ctypes.stubs
