@@ -57,14 +57,14 @@ module Env = struct
     let no_mem_init  = mdb_NOMEMINIT
   end
 
-  let create ?maxreaders ?mapsize ?maxdbs ?(flags=Flags.none) ?(mode=0o755) path =
+  let create ?max_readers ?map_size ?max_dbs ?(flags=Flags.none) ?(mode=0o755) path =
     let mode = coerce uint32_t mode_t UInt32.(of_int mode) in
     let env_ptr = alloc mdb_env in
     mdb_env_create env_ptr ;
     let env = !@env_ptr in
-    opt_iter (mdb_env_set_mapsize env) mapsize ;
-    opt_iter (mdb_env_set_maxdbs env) maxdbs ;
-    opt_iter (mdb_env_set_maxreaders env) maxreaders ;
+    opt_iter (mdb_env_set_mapsize env) map_size ;
+    opt_iter (mdb_env_set_maxdbs env) max_dbs ;
+    opt_iter (mdb_env_set_maxreaders env) max_readers ;
     (* mdb_env_set_assert env (fun env s -> raise (Assert (env,s))) ; *)
     begin try
         mdb_env_open env path flags mode ;
@@ -270,7 +270,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
   type key = Key.t
   type elt = Elt.t
 
-  let create ?(create=true) ?name env =
+  let create ?(create=true) env name =
     let db = alloc mdb_dbi in
     let flags =
       if create
@@ -337,9 +337,9 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       in
       mdb_txn_begin env parent txn_flag ptr_txn ;
       let txn = !@ptr_txn in
-      try match f { txn = txn ; db } with
-        | `Ok x -> mdb_txn_commit txn ; Some x
-        | `Abort -> mdb_txn_abort txn ; None
+      try
+        let x = f { txn = txn ; db } in
+        mdb_txn_commit txn ; Some x
       with
         | Abort t' when t' == txn || parent = None ->
           mdb_txn_abort txn ; None
@@ -483,14 +483,11 @@ module type S = sig
   type key
   type elt
 
-  val create : ?create:bool -> ?name:string -> Env.t -> t
-  val stats : t -> Env.stats
-  val drop : ?delete:bool -> t -> unit
+  val create : ?create:bool -> Env.t -> string -> t
   val get : t -> key -> elt
   val put : ?flags:PutFlags.t -> t -> key -> elt -> unit
   val append : t -> key -> elt -> unit
   val remove : ?elt:elt -> t -> key -> unit
-  val compare : t -> key -> key -> int
 
   module Txn : sig
 
@@ -500,17 +497,17 @@ module type S = sig
       ?parent:([< `Read | `Write ] as 'a) txn ->
       rw:'a ->
       t ->
-      ('a txn -> [< `Abort | `Ok of 'b ]) -> 'b option
+      ('a txn -> 'b) -> 'b option
 
     val abort : 'a txn -> 'b
-    val stats : 'a txn -> Env.stats
-    val compare : 'a txn -> key -> key -> int
-    val drop : ?delete:bool -> [< `Write ] txn -> unit
     val get : 'a txn -> key -> elt
     val put : ?flags:PutFlags.t -> [> `Write ] txn -> key -> elt -> unit
     val append : [> `Write] txn -> key -> elt -> unit
     val remove : ?elt:elt -> [> `Write ] txn -> key -> unit
     val env : 'a txn -> Env.t
+    val stats : 'a txn -> Env.stats
+    val compare : 'a txn -> key -> key -> int
+    val drop : ?delete:bool -> [< `Write ] txn -> unit
 
   end
 
@@ -542,4 +539,8 @@ module type S = sig
     val seek_range_dup : _ t -> key -> elt
 
   end
+
+  val stats : t -> Env.stats
+  val drop : ?delete:bool -> t -> unit
+  val compare : t -> key -> key -> int
 end
