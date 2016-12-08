@@ -103,6 +103,8 @@ module Env = struct
     mdb_env_get_fd env fd ;
     !@fd
 
+  let sync ?(force=false) env = mdb_env_sync env force
+
   let max_readers env =
     let i = alloc int in
     mdb_env_get_maxreaders env i ;
