@@ -93,6 +93,8 @@ module Env = struct
     mdb_env_get_flags env flags ;
     !@flags
 
+  let set_map_size = mdb_env_set_mapsize
+
   let path env =
     let path = alloc string in
     mdb_env_get_path env path ;

@@ -73,6 +73,8 @@ module Env : sig
 
   val flags : t -> Flags.t
 
+  val set_map_size : t -> int -> unit
+
   val path : t -> string
 
   val fd : t -> Unix.file_descr
