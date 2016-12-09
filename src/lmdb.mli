@@ -77,6 +77,8 @@ module Env : sig
 
   val fd : t -> Unix.file_descr
 
+  val sync : ?force:bool -> t -> unit
+
   type stats = {
     psize : int;
     depth : int;
