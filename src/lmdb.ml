@@ -58,7 +58,7 @@ module Env = struct
   end
 
   let create ?max_readers ?map_size ?max_dbs ?(flags=Flags.none) ?(mode=0o755) path =
-    let mode = coerce uint32_t mode_t UInt32.(of_int mode) in
+    let mode = Mode.of_int mode in
     let env_ptr = alloc mdb_env in
     mdb_env_create env_ptr ;
     let env = !@env_ptr in
