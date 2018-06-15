@@ -54,7 +54,9 @@ module Env : sig
     val no_mem_init : t
   end
 
-  (** [create "/mydb"] create an environment in the directory [mydb/].
+  (** [create "/mydb"] create an environment in the directory [mydb/] and return an handle {Env.t}.
+      The returned handle will be closed automatically when the OCaml handle
+      is garbage collected.
 
       @param map_size Size of the memory map.
       @param max_readers Maximum number of threads/reader slots.
