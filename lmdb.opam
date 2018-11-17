@@ -1,5 +1,6 @@
 opam-version: "2.0"
 maintainer: "Gabriel Radanne <drupyog@zoho.com>"
+synopsis: "Bindings for LMDB, a fast in-file database with ACID transactions"
 authors: "Gabriel Radanne <drupyog@zoho.com>"
 license: "MIT"
 homepage: "https://github.com/Drup/ocaml-lmdb"
