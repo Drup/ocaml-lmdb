@@ -1,0 +1,12 @@
+# OASIS_START
+# DO NOT EDIT (digest: 9b997eef96956903338e81290a14f324)
+version = "0.1"
+description = "OCaml binding for lmdb."
+requires = "ctypes ctypes.stubs ctypes.foreign unix-type-representations"
+archive(byte) = "lmdb.cma"
+archive(byte, plugin) = "lmdb.cma"
+archive(native) = "lmdb.cmxa"
+archive(native, plugin) = "lmdb.cmxs"
+exists_if = "lmdb.cma"
+# OASIS_STOP
+

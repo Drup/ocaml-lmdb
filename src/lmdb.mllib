@@ -1,0 +1,8 @@
+# OASIS_START
+# DO NOT EDIT (digest: aa8e5e836bbcd68ee9371e3d2884d2a0)
+Lmdb
+Lmdb_types
+Lmdb_bindings
+Lmdb_generated
+Lmdb_generated_types
+# OASIS_STOP
