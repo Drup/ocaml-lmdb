@@ -26,8 +26,13 @@ depends: [
 ]
 
 depexts: [
-  [["debian"] ["liblmdb-dev"]]
-  [["ubuntu"] ["liblmdb-dev"]]
-  [["archlinux"] ["lmdb"]]
-  [["homebrew" "osx"] ["lmdb"]]
+  ["liblmdb-dev"] {os-distribution = "debian"}
+  ["liblmdb-dev"] {os-distribution = "ubuntu"}
+  ["lmdb"] {os = "macos" & os-distribution = "homebrew"}
+  ["lmdb"] {os = "macos" & os-distribution = "macports"}
+  ["lmdb-devel"] {os-distribution = "centos"}
+  ["lmdb-devel"] {os-distribution = "fedora"}
+  ["lmdb-devel"] {os-distribution = "opensuse"}
+  ["lmdb"] {os-distribution = "alpine"}
+  ["lmdb"] {os-distribution = "archlinux"}
 ]
