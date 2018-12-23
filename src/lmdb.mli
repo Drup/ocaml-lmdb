@@ -347,8 +347,10 @@ module IntDb : S with type key = int and type elt = string
 type error = int
 (** Error return code. See Lmdb's documentation for details. *)
 
+exception Exists
+exception Not_found
 exception Error of error
-(** Error are reported with this exception or with {!Not_found}. *)
+(** Errors are reported with those exceptions. *)
 
 val pp_error : Format.formatter -> error -> unit
 (** [pp_error Format.std_formatter e] will print a human-readable description

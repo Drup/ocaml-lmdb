@@ -32,7 +32,15 @@ let version () =
 
 type error = int
 
-exception Error = Lmdb_types.Error
+exception Not_found = Lmdb_bindings.Not_found
+exception Exists = Lmdb_bindings.Exists
+exception Error = Lmdb_bindings.Error
+
+let () =
+  Printexc.register_printer @@ function
+  | Error i -> Some ("Lmdb.Error(" ^ mdb_strerror i ^ ")")
+  | Exists -> Some "Lmdb.Exists"
+  | _ -> None
 
 let pp_error fmt i =
   Format.fprintf fmt "%s@." (mdb_strerror i)

@@ -1,19 +1,11 @@
 open Unsigned
 open Ctypes
 
-exception Error of int
-
 module Make (C : Cstubs.Types.TYPE) = struct
   open C
 
-  type mdb_error = unit
-  let mdb_error : mdb_error typ =
-    let read = function
-      | 0 -> ()
-      | -30798 -> raise Not_found
-      | i -> raise (Error i)
-    in
-    view ~read ~write:(fun () -> 0) int
+  type mdb_error = int
+  let mdb_error : mdb_error typ = int
 
   let uint_as_int = view ~read:UInt.to_int ~write:UInt.of_int uint
   let size_t_as_int = view ~read:Size_t.to_int ~write:Size_t.of_int size_t
