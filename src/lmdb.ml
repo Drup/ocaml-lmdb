@@ -71,12 +71,11 @@ module Env = struct
     opt_iter (mdb_env_set_maxdbs env) max_dbs ;
     opt_iter (mdb_env_set_maxreaders env) max_readers ;
     (* mdb_env_set_assert env (fun env s -> raise (Assert (env,s))) ; *)
-    begin try
-        mdb_env_open env path flags mode ;
-        Gc.finalise mdb_env_close env
-      with Error _ -> mdb_env_close env
-    end ;
-    env
+    try
+      mdb_env_open env path flags mode ;
+      Gc.finalise mdb_env_close env ;
+      env
+    with Error _ as exn -> mdb_env_close env; raise exn
 
   module CopyFlags = struct
     type t = mdb_copy_flag
