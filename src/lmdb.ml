@@ -163,9 +163,13 @@ let trivial_txn ~write env f =
     else Env.Flags.read_only
   in
   mdb_txn_begin env None txn_flag txn ;
-  let x = f !@txn in
-  mdb_txn_commit !@txn ;
-  x
+  try
+    let x = f !@txn in
+    mdb_txn_commit !@txn ;
+    x
+  with e ->
+    mdb_txn_abort !@txn ;
+    raise e
 
 
 module PutFlags = struct
