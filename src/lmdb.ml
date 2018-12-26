@@ -320,11 +320,11 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
     )
 
   let get { db ; env } k =
+    let k' = Key.write k in
     let v = addr @@ make mdb_val in
     trivial_txn ~write:false env (fun t ->
-      mdb_get t db (Key.write k) v)
-    ;
-    Elt.read v
+        mdb_get t db k' v;
+        Elt.read v)
 
   let put ?(flags=PutFlags.none) { db ; env } k v =
     trivial_txn ~write:true env (fun t ->
