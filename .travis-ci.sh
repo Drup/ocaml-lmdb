@@ -8,8 +8,10 @@ set +x
 set -o errexit -o nounset
 
 eval `opam config env`
-./configure --enable-docs
+opam install lmdb --with-test --deps-only -v
+./configure --enable-docs --enable-tests
 make doc
+make test
 
 if [ -z "$TRAVIS" \
      -o "$TRAVIS_PULL_REQUEST" != "false" \

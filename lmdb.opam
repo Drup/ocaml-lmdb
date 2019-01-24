@@ -11,7 +11,8 @@ tags: [ "clib:lmdb" "database" ]
 build: [
   ["ocaml" "setup.ml" "-configure" "--prefix" prefix]
   ["ocaml" "setup.ml" "-build"]
-  [ "ocaml" "setup.ml" "-doc" ] {with-doc}
+  ["ocaml" "setup.ml" "-test"] {with-test}
+  ["ocaml" "setup.ml" "-doc"] {with-doc}
 ]
 install: ["ocaml" "setup.ml" "-install"]
 remove: ["ocamlfind" "remove" "lmdb"]
@@ -21,6 +22,7 @@ depends: [
   "ctypes-foreign"
   "unix-type-representations"
   "ocamlfind" {build}
+  "benchmark" {with-test}
 
   "oasis" {dev & build}
 ]
