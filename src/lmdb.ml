@@ -1,6 +1,5 @@
 open Ctypes
 open PosixTypes
-open Unsigned
 
 module S = Lmdb_bindings.Make(Lmdb_generated)
 open S
@@ -212,11 +211,14 @@ module Flags = struct
   let create     = mdb_CREATE
 end
 
+module Bigstring = Bigstringaf
+type buffer = Bigstring.t
+
 module Values = struct
 
   module Flags = Flags
 
-  type db_val = (mdb_val, [ `Struct ]) structured ptr
+  type db_val = buffer
 
   module type S = sig
     type t
@@ -228,39 +230,47 @@ module Values = struct
   module Int : S with type t = int = struct
     type t = int
     let default_flags = Flags.none
-    let int_size = Size_t.of_int (sizeof camlint)
-    let write i =
-      let cint = allocate camlint i in
-      let v = make mdb_val in
-      alive_while cint v;
-      setf v mv_size int_size ;
-      setf v mv_data (to_voidp cint) ;
-      addr v
-    let read v =
-      !@(from_voidp camlint @@ getf !@v mv_data)
+
+    let write, read =
+      match Sys.big_endian, (Sys.int_size + 7) / 8 * 8 with
+      | true, 32 ->
+        (fun x ->
+           let a = Bigstring.create 4 in
+           Bigstring.set_int32_be a 0 Int32.(of_int x);
+           a),
+        (fun a -> Bigstring.get_int32_be a 0 |> Int32.to_int)
+      | true, 64 ->
+        (fun x ->
+           let a = Bigstring.create 8 in
+           Bigstring.set_int64_be a 0 Int64.(of_int x);
+           a),
+        (fun a -> Bigstring.get_int64_be a 0 |> Int64.to_int)
+      | false, 32 ->
+        (fun x ->
+           let a = Bigstring.create 4 in
+           Bigstring.set_int32_le a 0 Int32.(of_int x);
+           a),
+        (fun a -> Bigstring.get_int32_le a 0 |> Int32.to_int)
+      | false, 64 ->
+        (fun x ->
+           let a = Bigstring.create 8 in
+           Bigstring.set_int64_le a 0 Int64.(of_int x);
+           a),
+        (fun a -> Bigstring.get_int64_le a 0 |> Int64.to_int)
+      | _ -> failwith "Lmdb: Unsupported integer size"
   end
 
   module String : S with type t = string = struct
     type t = string
     let default_flags = Flags.none
 
-    let array_of_string s =
-      let l = String.length s in
-      let a = CArray.make char l in
-      for i = 0 to l - 1 do
-        CArray.set a i s.[i]
-      done ; a
-
-    let read v =
-      let length = Size_t.to_int (getf !@v mv_size) in
-      string_from_ptr ~length @@ from_voidp char @@ getf !@v mv_data
-    let write s =
-      let v = make mdb_val in
-      let a = array_of_string s in
-      alive_while a v;
-      setf v mv_size @@ Size_t.of_int @@ CArray.length a ;
-      setf v mv_data @@ to_voidp @@ CArray.start a ;
-      addr v
+    let write, read =
+      (fun s ->
+         let len = String.length s in
+         let a = Bigstring.create len in
+         Bigstring.blit_from_string s ~src_off:0 a ~dst_off:0 ~len;
+         a),
+      (fun a -> Bigstring.substring a ~off:0 ~len:(Bigstring.length a))
   end
 
 
@@ -292,6 +302,24 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
   type key = Key.t
   type elt = Elt.t
+
+  let dbval_of_buffer b =
+    let mvp = addr (make mdb_val) in
+    alive_while b mvp; (* Make sure buffer will stay alive while mvp is in use. *)
+    (mvp |-> mv_size) <-@ Bigstring.length b ;
+    (mvp |-> mv_data) <-@ to_voidp @@ bigarray_start array1 b ; (* Reference to b is lost here! *)
+    (*Gc.full_major () ;*) (* trigger possible use-after-free. *)
+    mvp
+  let buffer_of_dbval mvp =
+    (* no need to keep a reference to mvp here, because the memory the bigarray
+     * is mapped to is in the lmdb map and only valid as long as the transaction
+     * is alive. The user knows this. *)
+    bigarray_of_ptr array1
+      (!@ (mvp |-> mv_size))
+      Char
+      (!@ (mvp |-> mv_data) |> from_voidp char)
+
+  let write f v = f v
 
   let create ?(create=true) env name =
     let db = alloc mdb_dbi in
@@ -328,22 +356,30 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
     )
 
   let get { db ; env } k =
-    let k' = Key.write k in
     let v = addr @@ make mdb_val in
     trivial_txn ~write:false env (fun t ->
-        mdb_get t db k' v;
-        Elt.read v)
+        mdb_get t db (dbval_of_buffer @@ write Key.write k) v;
+        Elt.read @@ buffer_of_dbval v)
 
   let put ?(flags=PutFlags.none) { db ; env } k v =
     trivial_txn ~write:true env (fun t ->
-      mdb_put t db (Key.write k) (Elt.write v) flags
+      mdb_put t db
+        (dbval_of_buffer @@ write Key.write k)
+        (dbval_of_buffer @@ write Elt.write v)
+        flags
     )
 
   let remove ?elt { db ; env } k =
     trivial_txn ~write:true env (fun t ->
       match elt with
-        | Some v -> mdb_del t db (Key.write k) (Elt.write v)
-        | None ->  mdb_del t db (Key.write k) @@ from_voidp mdb_val null
+        | Some v ->
+          mdb_del t db
+            (dbval_of_buffer @@ write Key.write k)
+            (dbval_of_buffer @@ write Elt.write v)
+        | None ->
+          mdb_del t db
+            (dbval_of_buffer @@ write Key.write k)
+            (from_voidp mdb_val null)
     )
 
   module Txn = struct
@@ -385,11 +421,14 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
     let get { db ; txn } k =
       let v = addr @@ make mdb_val in
-      mdb_get txn db (Key.write k) v ;
-      Elt.read v
+      mdb_get txn db (dbval_of_buffer @@ write Key.write k) v ;
+      Elt.read @@ buffer_of_dbval v
 
     let put ?(flags=PutFlags.none) { db ; txn } k v =
-      mdb_put txn db (Key.write k) (Elt.write v) flags
+      mdb_put txn db
+        (dbval_of_buffer @@ write Key.write k)
+        (dbval_of_buffer @@ write Elt.write v)
+        flags
 
     let append t k v =
       let flags =
@@ -399,24 +438,30 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
     let remove ?elt { db ; txn } k =
       match elt with
-        | Some v -> mdb_del txn db (Key.write k) (Elt.write v)
-        | None ->  mdb_del txn db (Key.write k) @@ from_voidp mdb_val null
+        | Some v ->
+          mdb_del txn db
+            (dbval_of_buffer @@ write Key.write k)
+            (dbval_of_buffer @@ write Elt.write v)
+        | None ->
+          mdb_del txn db
+            (dbval_of_buffer @@ write Key.write k)
+            (from_voidp mdb_val null)
 
     let env { txn ; _ } = mdb_txn_env txn
 
     let compare_key { db ; txn } :key -> key -> int =
       fun x y ->
       mdb_cmp txn db
-        (Key.write x)
-        (Key.write y)
+        (dbval_of_buffer @@ write Key.write x)
+        (dbval_of_buffer @@ write Key.write y)
 
     let compare_elt ({ db ; txn } as t) :elt -> elt -> int =
       if not (Flags.(test dup_sort) @@ flags t) then
         invalid_arg "Lmdb: elements are only comparable in a dup_sort db";
       fun x y ->
       mdb_dcmp txn db
-        (Elt.write x)
-        (Elt.write y)
+        (dbval_of_buffer @@ write Elt.write x)
+        (dbval_of_buffer @@ write Elt.write y)
 
     let compare = compare_key
 
@@ -448,7 +493,10 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       with exn -> mdb_cursor_close cursor ; raise exn
 
     let put ?(flags=PutFlags.none) cursor k v =
-      mdb_cursor_put cursor (Key.write k) (Elt.write v) flags
+      mdb_cursor_put cursor
+        (dbval_of_buffer @@ write Key.write k)
+        (dbval_of_buffer @@ write Elt.write v)
+        flags
 
     let put_here ?(flags=PutFlags.none) cursor k v =
       put ~flags:PutFlags.(current + flags) cursor k v
@@ -469,7 +517,8 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       let k = addr @@ make mdb_val in
       let v = addr @@ make mdb_val in
       mdb_cursor_get cursor k v op ;
-      Key.read k, Elt.read v
+      Key.read @@ buffer_of_dbval k,
+      Elt.read @@ buffer_of_dbval v
 
     let get = get_prim MDB_GET_CURRENT
     let first = get_prim MDB_FIRST
@@ -479,8 +528,10 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
     let seek_prim op cursor k =
       let v = addr @@ make mdb_val in
-      mdb_cursor_get cursor (Key.write k) v op ;
-      Elt.read v
+      mdb_cursor_get cursor
+        (dbval_of_buffer @@ write Key.write k)
+        v op ;
+      Elt.read @@ buffer_of_dbval v
 
     let seek = seek_prim MDB_SET
     let seek_range = seek_prim MDB_SET_RANGE

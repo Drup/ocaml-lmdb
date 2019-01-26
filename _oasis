@@ -13,7 +13,7 @@ Library lmdb
   Path: src
   Modules: Lmdb
   InternalModules: Lmdb_types, Lmdb_bindings, Lmdb_generated, Lmdb_generated_types
-  BuildDepends: ctypes, ctypes.stubs, ctypes.foreign, unix-type-representations
+  BuildDepends: bigstringaf, ctypes, ctypes.stubs, ctypes.foreign, unix-type-representations
   CCLib: -llmdb
   CSources: lmdb_cstubs.c
 
