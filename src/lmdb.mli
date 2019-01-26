@@ -231,7 +231,9 @@ end
     val stats : 'a txn -> Env.stats
 
     val compare : 'a txn -> key -> key -> int
-    (** The comparison function used by the database. *)
+    val compare_key : 'a txn -> key -> key -> int
+    val compare_elt : 'a txn -> elt -> elt -> int
+    (** The comparison functions used by the database. *)
 
     val drop : ?delete:bool -> [< `Write ] txn -> unit
 
@@ -329,7 +331,9 @@ end
   val drop : ?delete:bool -> t -> unit
 
   val compare : t -> key -> key -> int
-  (** The comparison function used by the database. *)
+  val compare_key : t -> key -> key -> int
+  val compare_elt : t -> elt -> elt -> int
+  (** The comparison functions used by the database. *)
 end
 
 (** Database with string keys and string elements. *)

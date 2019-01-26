@@ -396,21 +396,34 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
     let env { txn ; _ } = mdb_txn_env txn
 
-    let compare ({ txn ; db } as t) x y =
-      let f = if Flags.(test dup_sort) @@ flags t then
-          mdb_dcmp
-        else
-          mdb_cmp
-      in
-      f txn db (Key.write x) (Key.write y)
+    let compare_key { db ; txn } :key -> key -> int =
+      fun x y ->
+      mdb_cmp txn db
+        (Key.write x)
+        (Key.write y)
+
+    let compare_elt ({ db ; txn } as t) :elt -> elt -> int =
+      if not (Flags.(test dup_sort) @@ flags t) then
+        invalid_arg "Lmdb: elements are only comparable in a dup_sort db";
+      fun x y ->
+      mdb_dcmp txn db
+        (Elt.write x)
+        (Elt.write y)
+
+    let compare = compare_key
 
   end
 
   let append { db ; env } k v =
     trivial_txn ~write:true env @@ fun txn -> Txn.append {Txn. db ; txn} k v
 
-  let compare {db ; env} x y =
-    trivial_txn ~write:false env @@ fun txn -> Txn.compare {Txn. db ; txn} x y
+  let compare_key {db ; env} x y =
+    trivial_txn ~write:false env @@ fun txn -> Txn.compare_key {Txn. db ; txn} x y
+
+  let compare_elt {db ; env} x y =
+    trivial_txn ~write:false env @@ fun txn -> Txn.compare_elt {Txn. db ; txn} x y
+
+  let compare = compare_key
 
   module Cursor = struct
 
@@ -522,6 +535,8 @@ module type S = sig
     val env : 'a txn -> Env.t
     val stats : 'a txn -> Env.stats
     val compare : 'a txn -> key -> key -> int
+    val compare_key : 'a txn -> key -> key -> int
+    val compare_elt : 'a txn -> elt -> elt -> int
     val drop : ?delete:bool -> [< `Write ] txn -> unit
 
   end
@@ -558,4 +573,6 @@ module type S = sig
   val stats : t -> Env.stats
   val drop : ?delete:bool -> t -> unit
   val compare : t -> key -> key -> int
+  val compare_key : t -> key -> key -> int
+  val compare_elt : t -> elt -> elt -> int
 end
