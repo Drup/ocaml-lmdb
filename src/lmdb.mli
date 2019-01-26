@@ -376,13 +376,14 @@ module Values : sig
     val integer_key : t
   end
 
-  type db_val
+  type db_val =
+    (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 
   module type S = sig
     type t
     val default_flags : Flags.t
     val read : db_val -> t
-    val write : t -> db_val
+    val write : (int -> db_val) -> t -> db_val
   end
 
   module Key : sig

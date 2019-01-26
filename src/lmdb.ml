@@ -224,7 +224,7 @@ module Values = struct
     type t
     val default_flags : Flags.t
     val read : db_val -> t
-    val write : t -> db_val
+    val write : (int -> db_val) -> t -> db_val
   end
 
   module Int : S with type t = int = struct
@@ -234,26 +234,26 @@ module Values = struct
     let write, read =
       match Sys.big_endian, (Sys.int_size + 7) / 8 * 8 with
       | true, 32 ->
-        (fun x ->
-           let a = Bigstring.create 4 in
+        (fun alloc x ->
+           let a = alloc 4 in
            Bigstring.set_int32_be a 0 Int32.(of_int x);
            a),
         (fun a -> Bigstring.get_int32_be a 0 |> Int32.to_int)
       | true, 64 ->
-        (fun x ->
-           let a = Bigstring.create 8 in
+        (fun alloc x ->
+           let a = alloc 8 in
            Bigstring.set_int64_be a 0 Int64.(of_int x);
            a),
         (fun a -> Bigstring.get_int64_be a 0 |> Int64.to_int)
       | false, 32 ->
-        (fun x ->
-           let a = Bigstring.create 4 in
+        (fun alloc x ->
+           let a = alloc 4 in
            Bigstring.set_int32_le a 0 Int32.(of_int x);
            a),
         (fun a -> Bigstring.get_int32_le a 0 |> Int32.to_int)
       | false, 64 ->
-        (fun x ->
-           let a = Bigstring.create 8 in
+        (fun alloc x ->
+           let a = alloc 8 in
            Bigstring.set_int64_le a 0 Int64.(of_int x);
            a),
         (fun a -> Bigstring.get_int64_le a 0 |> Int64.to_int)
@@ -265,9 +265,9 @@ module Values = struct
     let default_flags = Flags.none
 
     let write, read =
-      (fun s ->
+      (fun alloc s ->
          let len = String.length s in
-         let a = Bigstring.create len in
+         let a = alloc len in
          Bigstring.blit_from_string s ~src_off:0 a ~dst_off:0 ~len;
          a),
       (fun a -> Bigstring.substring a ~off:0 ~len:(Bigstring.length a))
@@ -319,7 +319,8 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       Char
       (!@ (mvp |-> mv_data) |> from_voidp char)
 
-  let write f v = f v
+  let write f v =
+    f Bigstring.create v
 
   let create ?(create=true) env name =
     let db = alloc mdb_dbi in
