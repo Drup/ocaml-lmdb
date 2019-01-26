@@ -6,6 +6,11 @@ module S = Lmdb_bindings.Make(Lmdb_generated)
 open S
 open Lmdb_bindings.T
 
+let dummy_ref = Weak.create 1
+(* keep a alive while b is alive *)
+let alive_while a b =
+  Gc.finalise (fun _ -> Weak.set dummy_ref 0 (Some (Obj.repr a))) b
+
 let alloc = allocate_n ~count:1
 
 let opt_iter f = function
@@ -66,12 +71,11 @@ module Env = struct
     opt_iter (mdb_env_set_maxdbs env) max_dbs ;
     opt_iter (mdb_env_set_maxreaders env) max_readers ;
     (* mdb_env_set_assert env (fun env s -> raise (Assert (env,s))) ; *)
-    begin try
-        mdb_env_open env path flags mode ;
-        Gc.finalise mdb_env_close env
-      with Error _ -> mdb_env_close env
-    end ;
-    env
+    try
+      mdb_env_open env path flags mode ;
+      Gc.finalise mdb_env_close env ;
+      env
+    with Error _ as exn -> mdb_env_close env; raise exn
 
   module CopyFlags = struct
     type t = mdb_copy_flag
@@ -214,9 +218,11 @@ module Values = struct
     let default_flags = Flags.none
     let int_size = Size_t.of_int (sizeof camlint)
     let write i =
+      let cint = allocate camlint i in
       let v = make mdb_val in
+      alive_while cint v;
       setf v mv_size int_size ;
-      setf v mv_data (to_voidp @@ allocate camlint i) ;
+      setf v mv_data (to_voidp cint) ;
       addr v
     let read v =
       !@(from_voidp camlint @@ getf !@v mv_data)
@@ -239,6 +245,7 @@ module Values = struct
     let write s =
       let v = make mdb_val in
       let a = array_of_string s in
+      alive_while a v;
       setf v mv_size @@ Size_t.of_int @@ CArray.length a ;
       setf v mv_data @@ to_voidp @@ CArray.start a ;
       addr v
