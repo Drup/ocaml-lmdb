@@ -67,11 +67,11 @@ module Env = struct
     let env_ptr = alloc mdb_env in
     mdb_env_create env_ptr ;
     let env = !@env_ptr in
-    opt_iter (mdb_env_set_mapsize env) map_size ;
-    opt_iter (mdb_env_set_maxdbs env) max_dbs ;
-    opt_iter (mdb_env_set_maxreaders env) max_readers ;
-    (* mdb_env_set_assert env (fun env s -> raise (Assert (env,s))) ; *)
     try
+      opt_iter (mdb_env_set_mapsize env) map_size ;
+      opt_iter (mdb_env_set_maxdbs env) max_dbs ;
+      opt_iter (mdb_env_set_maxreaders env) max_readers ;
+      (* mdb_env_set_assert env (fun env s -> raise (Assert (env,s))) ; *)
       mdb_env_open env path flags mode ;
       Gc.finalise mdb_env_close env ;
       env
