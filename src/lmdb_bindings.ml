@@ -1,12 +1,25 @@
 open Ctypes
 
+exception Not_found = Not_found
+exception Exists
+exception Error of int
+
 module T = Lmdb_types.Make(Lmdb_generated_types)
 open T
 
 module Make (F: Cstubs.FOREIGN) = struct
   open F
 
-  let ret_error = returning mdb_error
+  let mdb_error_as_unit : unit typ =
+    let read = function
+      | 0 -> ()
+      | -30798 -> raise Not_found
+      | -30799 -> raise Exists
+      | i -> raise (Error i)
+    in
+    view ~read ~write:(fun () -> 0) int
+
+  let ret_error = returning mdb_error_as_unit
 
   (** {2 MDB functions} *)
 
