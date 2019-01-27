@@ -18,6 +18,7 @@ install: ["ocaml" "setup.ml" "-install"]
 remove: ["ocamlfind" "remove" "lmdb"]
 depends: [
   "base-bytes"
+  "bigstringaf"
   "ctypes"
   "ctypes-foreign"
   "unix-type-representations"

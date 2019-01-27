@@ -32,7 +32,7 @@ module Make (C : Cstubs.Types.TYPE) = struct
 
   type mdb_val
   let mdb_val : mdb_val structure typ = structure "MDB_val"
-  let mv_size = field mdb_val "mv_size" size_t
+  let mv_size = field mdb_val "mv_size" size_t_as_int
   let mv_data = field mdb_val "mv_data" (ptr void)
   let () = seal mdb_val
 
