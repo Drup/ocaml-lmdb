@@ -25,7 +25,7 @@
 <pre><span id="MODULEValues"><span class="keyword">module</span> Values</span>: <code class="code"><span class="keyword">sig</span></code> <a href="Lmdb.Values.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><hr width="100%">
 
 <pre><span id="MODULEFlags"><span class="keyword">module</span> <a href="Lmdb.Values.Flags.html">Flags</a></span>: <code class="code"><span class="keyword">sig</span></code> <a href="Lmdb.Values.Flags.html">..</a> <code class="code"><span class="keyword">end</span></code></pre>
-<pre><span id="TYPEdb_val"><span class="keyword">type</span> <code class="type"></code>db_val</span> </pre>
+<pre><span id="TYPEdb_val"><span class="keyword">type</span> <code class="type"></code>db_val</span> = <code class="type">(char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t</code> </pre>
 
 
 <pre><span id="MODULETYPES"><span class="keyword">module type</span> <a href="Lmdb.Values.S.html">S</a></span> = <code class="code"><span class="keyword">sig</span></code> <a href="Lmdb.Values.S.html">..</a> <code class="code"><span class="keyword">end</span></code></pre>
