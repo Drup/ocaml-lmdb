@@ -101,9 +101,11 @@
 <h3 id="2_Misc">Misc</h3>
 <pre><span id="VALenv"><span class="keyword">val</span> env</span> : <code class="type">[< `Read | `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -> <a href="Lmdb.Env.html#TYPEt">Lmdb.Env.t</a></code></pre>
 <pre><span id="VALstats"><span class="keyword">val</span> stats</span> : <code class="type">[< `Read | `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -> <a href="Lmdb.Env.html#TYPEstats">Lmdb.Env.stats</a></code></pre>
-<pre><span id="VALcompare"><span class="keyword">val</span> compare</span> : <code class="type">[< `Read | `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -> <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> int</code></pre><div class="info ">
+<pre><span id="VALcompare"><span class="keyword">val</span> compare</span> : <code class="type">[< `Read | `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -> <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> int</code></pre>
+<pre><span id="VALcompare_key"><span class="keyword">val</span> compare_key</span> : <code class="type">[< `Read | `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -> <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> int</code></pre>
+<pre><span id="VALcompare_elt"><span class="keyword">val</span> compare_elt</span> : <code class="type">[< `Read | `Write ] <a href="Lmdb.S.Txn.html#TYPEtxn">txn</a> -> <a href="Lmdb.S.html#TYPEelt">Lmdb.S.elt</a> -> <a href="Lmdb.S.html#TYPEelt">Lmdb.S.elt</a> -> int</code></pre><div class="info ">
 <div class="info-desc">
-<p>The comparison function used by the database.</p>
+<p>The comparison functions used by the database.</p>
 </div>
 </div>
 
