@@ -2,9 +2,9 @@
 
 (** The {{:https://symas.com/products/lightning-memory-mapped-database/#overview}LMDB} database is a fast in-file database that supports ACID transactions.
 
-    These bindings attempts to expose a typesafe yet low-overhead API.
+    These bindings attempt to expose a typesafe yet low-overhead API.
 
-    First, an environment must be open using {!Env.create}:
+    First, an environment must be opened using {!Env.create}:
 
     {[let env = Env.create "mydb" ]}
 
@@ -19,7 +19,7 @@ let db = Db.create ~create:true env "Camelidae" in
 Db.put db "Bactrian camel" "Elegant and beautiful animal with two humps."
     ]}
 
-    {{!S.Txn}Transactions} and {{!S.Cursor}Iterators} are also available.
+    {{!Txn}Transactions} and {{!S.Cursor}Iterators} are also available.
 
     You can define new database implementations using the {!Make} functor.
 *)
@@ -66,7 +66,7 @@ module Env : sig
 
       @param map_size Size of the memory map.
       @param max_readers Maximum number of threads/reader slots.
-      @param max_dbs Maximum number of named database.
+      @param max_dbs Maximum number of named databases.
       @param mode The UNIX permissions to set on created files and semaphores. Default is [0o755].
   *)
   val create :
@@ -117,16 +117,17 @@ module Txn : sig
   (** A transaction handle. A transaction may be read-only or read-write. *)
   type -'a t constraint 'a = [< `Read | `Write ]
 
-  (** [go cap env f] makes a transaction in [env] with the capabilities [cap]
+  (** [go cap env ?txn f] makes a transaction in [env] with the capabilities [cap]
       and using the function [f txn].
 
-      The function [f] will receive the transaction handle.
-      All changes to the environment done using the transaction handle [txn]
-      will be persisted to the environment only when [f] returns.
-      The transaction handle will be committed once [f] returns and should
+      The function [f] will receive the transaction handle [txn].
+      All changes to the environment [env] done using the transaction handle [txn]
+      will be persisted to the environment when [f] returns.
+      After [f] returned, the transaction handle is invalid and should
       therefore not be leaked outside [f].
 
-      @return [None] if the transaction was aborted with [abort], and [Some v] otherwise.
+      @return [None] if the transaction was aborted with [abort], and [Some _] otherwise.
+      @param txn Create a child transaction to [txn].
 
       Here is an example incrementing a value atomically:
       {[
@@ -181,10 +182,10 @@ module type S = sig
 
   (** [create env "foo"] open the database ["foo"] in the environment [env].
 
-      If [create] is set to [true], the database will be created if it doesn't
+      @param create if [true], the database will be created if it doesn't
       exists. Invalid if [env] is read only.
 
-      @raise Not_found if the database doesn't exist.
+      @raise Not_found if the database doesn't exist. and [create] wasn't [true].
   *)
   val create : ?create:bool -> Env.t -> string -> t
 
@@ -196,12 +197,17 @@ module type S = sig
   (** [put db k v] associates the key [k] to the value [v] in the database [db].
 
       @param flags Flags that allow to modify the behavior of [put].
+      @raise Exists if the key is already in the database and
+      [PutFlagse.no_overwrite] or [PutFlags.no_dup_data] was passed in [flags]
+      or if the [db] does not support [Values.Flags.dup_sort].
   *)
   val put : t -> ?txn:([> `Write ]) Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
 
-  (** [append db k v] append [k, v] at the end of the database [db] without performing comparisons.
+  (** [append db k v] like [put], but append [k, v] at the end of the database [db] without performing comparisons.
 
       Should only be used to quickly add already-sorted data to the database.
+
+      @raise Error if a key is added that is smaller than the largest key already in the database.
   *)
   val append : t -> ?txn:([> `Write ]) Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
 
@@ -210,6 +216,8 @@ module type S = sig
       If the database accepts duplicates:
       - if [elt] is provided, only the specified binding is removed.
       - if [elt] is not provided, all the bindings with [k] are removed.
+
+      @raise Not_found if the key is not in the database.
   *)
   val remove : t -> ?txn:([> `Write ]) Txn.t -> ?elt:elt -> key -> unit
 
@@ -222,14 +230,15 @@ module type S = sig
         A cursor may be read-only or read-write. *)
     type -'a t constraint 'a = [< `Read | `Write ]
 
-    (** [go txn f] makes a cursor in the transaction [txn] using the function [f].
+    (** [go cap db ?txn f] makes a cursor in the transaction [txn] using the
+       function [f cursor].
 
-        The function [f] will receive the cursor.
-        A cursor can only be create and used inside a transaction. The cursor
+        The function [f] will receive the [cursor].
+        A cursor can only be created and used inside a transaction. The cursor
         inherits the permissions of the transaction.
         The cursor should not be leaked outside of [f].
 
-        Here is an example that returns the first 5 elements of a database:
+        Here is an example that returns the first 5 elements of a [db]:
         {[
 go ro db begin fun c ->
   let h = first c in
@@ -240,6 +249,9 @@ go ro db begin fun c ->
   h :: aux 1
 end
         ]}
+
+        @param txn if not provided, a transaction will implicitely be created
+        and committed after [f] returns.
     *)
     val go : 'c cap -> db -> ?txn:'c Txn.t -> ('c t -> 'a) -> 'a
 
@@ -304,12 +316,21 @@ end
 
   val stats : t -> Env.stats
 
+  (** [drop ?delete db] Empties [db].
+      @param delete If [true] [db] is also deleted from the environment
+      and the handle [db] invalidated. *)
   val drop : ?delete:bool -> t -> unit
 
-  val compare : t -> ?txn:_ Txn.t -> key -> key -> int
+  (** [compare_key db ?txn a b]
+     Compares [a] and [b] as if they were keys in [db]. *)
   val compare_key : t -> ?txn:_ Txn.t -> key -> key -> int
+
+  (** [compare db ?txn a b] Same as [compare_key]. *)
+  val compare : t -> ?txn:_ Txn.t -> key -> key -> int
+
+  (** [compare_elt db ?txn a b]
+     Compares [a] and [b] as if they were data elements in a [dup_sort] [db]. *)
   val compare_elt : t -> ?txn:_ Txn.t -> elt -> elt -> int
-  (** The comparison functions used by the database. *)
 end
 
 (** Database with string keys and string elements. *)
