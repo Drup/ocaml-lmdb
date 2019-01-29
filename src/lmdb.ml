@@ -90,9 +90,10 @@ module Env = struct
         | Rw ->
           mdb_env_open env path flags mode
       end ;
-      Gc.finalise mdb_env_close env ;
       env
     with Error _ as exn -> mdb_env_close env; raise exn
+
+  let close = mdb_env_close
 
   module CopyFlags = struct
     type t = mdb_copy_flag

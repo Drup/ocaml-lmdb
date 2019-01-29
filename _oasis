@@ -56,18 +56,18 @@ Executable "simple_db"
   BuildDepends: lmdb
 
 
-Executable "bench"
+Executable "test"
   Path: tests
-  MainIs: bench.ml
+  MainIs: test.ml
   Build$: flag(tests)
   CompiledObject: best
   Install: false
-  BuildDepends: lmdb, benchmark
+  BuildDepends: lmdb, alcotest, benchmark
 
-Test "bench"
+Test "test"
   Run$: flag(tests)
-  TestTools: bench
-  Command: env MALLOC_CHECK_=3 MALLOC_PERTURB_=195 $bench
+  TestTools: test
+  Command: env MALLOC_CHECK_=3 MALLOC_PERTURB_=195 $test
   WorkingDirectory: _build
 
 

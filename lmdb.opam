@@ -23,6 +23,7 @@ depends: [
   "ctypes-foreign"
   "unix-type-representations"
   "ocamlfind" {build}
+  "alcotest" {with-test}
   "benchmark" {with-test}
 
   "oasis" {dev & build}
