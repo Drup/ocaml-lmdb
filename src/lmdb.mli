@@ -128,6 +128,7 @@ module Txn : sig
 
       @return [None] if the transaction was aborted with [abort], and [Some _] otherwise.
       @param txn Create a child transaction to [txn].
+      This is not supported on an [env] with [write_map].
 
       Here is an example incrementing a value atomically:
       {[
