@@ -27,7 +27,7 @@ Db.put db "Bactrian camel" "Elegant and beautiful animal with two humps."
 
 (** {2 Capabilities} *)
 
-type 'a cap
+type 'cap cap
 val ro : [ `Read ] cap
 val rw : [ `Read | `Write ] cap
 
@@ -38,7 +38,7 @@ module Env : sig
 
   (** A DB environment supports multiple databases,
       all residing in the same shared-memory map.*)
-  type t
+  type -'cap t
 
   module Flags :  sig
     type t
@@ -50,7 +50,6 @@ module Env : sig
     val fixed_map : t
     val no_subdir : t
     val no_sync : t
-    val read_only : t
     val no_meta_sync : t
     val write_map : t
     val map_async : t
@@ -70,24 +69,26 @@ module Env : sig
       @param mode The UNIX permissions to set on created files and semaphores. Default is [0o755].
   *)
   val create :
-    ?max_readers:int -> ?map_size:int -> ?max_dbs:int ->
-    ?flags:Flags.t -> ?mode:int -> string -> t
+    'cap cap -> ?max_readers:int -> ?map_size:int -> ?max_dbs:int ->
+    ?flags:Flags.t -> ?mode:int -> string -> 'cap t
 
-  val copy : ?compact:bool -> t -> string -> unit
+  val close: _ t -> unit
 
-  val copyfd : ?compact:bool -> t -> Unix.file_descr -> unit
+  val copy : ?compact:bool -> [> `Read ] t -> string -> unit
 
-  val set_flags : t -> Flags.t -> bool -> unit
+  val copyfd : ?compact:bool -> [> `Read ] t -> Unix.file_descr -> unit
 
-  val flags : t -> Flags.t
+  val set_flags : 'cap t -> Flags.t -> bool -> unit
 
-  val set_map_size : t -> int -> unit
+  val flags : 'cap t -> Flags.t
 
-  val path : t -> string
+  val set_map_size : [> `Write ] t -> int -> unit
 
-  val fd : t -> Unix.file_descr
+  val path : 'cap t -> string
 
-  val sync : ?force:bool -> t -> unit
+  val fd : 'cap t -> Unix.file_descr
+
+  val sync : ?force:bool -> [> `Write ] t -> unit
 
   type stats = {
     psize : int;
@@ -98,15 +99,15 @@ module Env : sig
     entries : int;
   }
 
-  val stats : t -> stats
+  val stats : [> `Read ] t -> stats
 
-  val max_readers : t -> int
+  val max_readers : 'cap t -> int
 
-  val max_keysize : t -> int
+  val max_keysize : 'cap t -> int
 
-  val reader_list : t -> string list
+  val reader_list : 'cap t -> string list
 
-  val readers : t -> int
+  val readers : 'cap t -> int
 
 end
 
@@ -115,7 +116,7 @@ end
 (** A series of operations performed atomically. *)
 module Txn : sig
   (** A transaction handle. A transaction may be read-only or read-write. *)
-  type -'a t constraint 'a = [< `Read | `Write ]
+  type -'cap t
 
   (** [go cap env ?txn f] makes a transaction in [env] with the capabilities [cap]
       and using the function [f txn].
@@ -140,18 +141,18 @@ end
       ]}
   *)
   val go :
-    'a cap ->
-    Env.t ->
-    ?txn:([< `Read | `Write ] as 'a) t ->
-    ('a t -> 'b) -> 'b option
+    'cap cap ->
+    'cap Env.t ->
+    ?txn:'cap t ->
+    ('cap t -> 'a) -> 'a option
 
   (** [abort txn] will abort the transaction. *)
-  val abort : 'a t -> 'b
+  val abort : 'cap t -> 'b
 
 
   (** {2 Misc} *)
 
-  val env : 'a t -> Env.t
+  val env : 'cap t -> 'cap Env.t
 
 end
 
@@ -173,13 +174,17 @@ end
 module type S = sig
 
   (** A handle for an individual database. *)
-  type t
+  type -'cap t
 
   (** The key of the database. *)
   type key
 
   (** The values of the database. *)
   type elt
+
+  type 'cap create_mode
+  val create_db : [> `Read | `Write ] create_mode
+  val open_db : [> `Read ] create_mode
 
   (** [create env "foo"] open the database ["foo"] in the environment [env].
 
@@ -188,12 +193,12 @@ module type S = sig
 
       @raise Not_found if the database doesn't exist. and [create] wasn't [true].
   *)
-  val create : ?create:bool -> Env.t -> string -> t
+  val create : 'cap create_mode -> ?txn:'cap Txn.t -> 'cap Env.t -> string -> 'cap t
 
   (** [get db k] returns the value associated to [k].
       @raise Not_found if the key is not in the database.
   *)
-  val get : t -> ?txn:[> `Read ] Txn.t -> key -> elt
+  val get : [> `Read ] t -> ?txn:[> `Read ] Txn.t -> key -> elt
 
   (** [put db k v] associates the key [k] to the value [v] in the database [db].
 
@@ -202,7 +207,7 @@ module type S = sig
       [PutFlagse.no_overwrite] or [PutFlags.no_dup_data] was passed in [flags]
       or if the [db] does not support [Values.Flags.dup_sort].
   *)
-  val put : t -> ?txn:([> `Write ]) Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
+  val put : [> `Read | `Write ] t -> ?txn:[> `Read | `Write ] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
 
   (** [append db k v] like [put], but append [k, v] at the end of the database [db] without performing comparisons.
 
@@ -210,7 +215,7 @@ module type S = sig
 
       @raise Error if a key is added that is smaller than the largest key already in the database.
   *)
-  val append : t -> ?txn:([> `Write ]) Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
+  val append : [> `Read | `Write ] t -> ?txn: [> `Read | `Write ] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
 
   (** [remove db k] removes [k] from [db].
 
@@ -220,16 +225,16 @@ module type S = sig
 
       @raise Not_found if the key is not in the database.
   *)
-  val remove : t -> ?txn:([> `Write ]) Txn.t -> ?elt:elt -> key -> unit
+  val remove : [> `Read | `Write ] t -> ?txn:([> `Read | `Write ]) Txn.t -> ?elt:elt -> key -> unit
 
 
   (** Manual iterators. *)
   module Cursor : sig
-    type db
+    type -'cap db
 
     (** A cursor allows to iterates manually on the database.
         A cursor may be read-only or read-write. *)
-    type -'a t constraint 'a = [< `Read | `Write ]
+    type -'cap t
 
     (** [go cap db ?txn f] makes a cursor in the transaction [txn] using the
        function [f cursor].
@@ -254,46 +259,46 @@ end
         @param txn if not provided, a transaction will implicitely be created
         and committed after [f] returns.
     *)
-    val go : 'c cap -> db -> ?txn:'c Txn.t -> ('c t -> 'a) -> 'a
+    val go : 'cap cap -> 'cap db -> ?txn:'cap Txn.t -> ('cap t -> 'a) -> 'a
 
     (** [get cursor] returns the binding at the position of the cursor. *)
-    val get : _ t -> key * elt
+    val get : [> `Read ] t -> key * elt
 
     (** [put cursor k v] adds [k,v] to the database and move the cursor to
         its position. *)
-    val put : [> `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
+    val put : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
 
     (** [put_here cursor k v] adds [k,v] at the current position.
 
         @raise Error if the key provided is not the current key.
     *)
-    val put_here : [> `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
+    val put_here : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
 
     (** [remove cursor] removes the current binding.
 
         If the database allow duplicate keys and if [all] is [true], removes
         all the bindings associated to the current key.
     *)
-    val remove : [> `Write ] t -> ?all:bool -> unit -> unit
+    val remove : [> `Read | `Write ] t -> ?all:bool -> unit -> unit
 
     (** [first cursor] moves the cursor to the first binding. *)
-    val first : _ t -> key * elt
+    val first : [> `Read ] t -> key * elt
 
     (** [last cursor] moves the cursor to the last binding. *)
-    val last : _ t -> key * elt
+    val last : [> `Read ] t -> key * elt
 
     (** [next cursor] moves the cursor to the next binding. *)
-    val next : _ t -> key * elt
+    val next : [> `Read ] t -> key * elt
 
     (** [prev cursor] moves the cursor to the prev binding. *)
-    val prev : _ t -> key * elt
+    val prev : [> `Read ] t -> key * elt
 
     (** [seek cursor k] moves the cursor to the key [k]. *)
-    val seek : _ t -> key -> elt
+    val seek : [> `Read ] t -> key -> elt
 
     (** [seek_range cursor k] moves the cursor to the first key
         greater or equal to [k]. *)
-    val seek_range : _ t -> key -> elt
+    val seek_range : [> `Read ] t -> key -> elt
 
     (** {2 Operations on duplicated keys}
 
@@ -304,34 +309,34 @@ end
         database that does not support duplicate keys.
     *)
 
-    val first_dup : _ t -> key * elt
-    val last_dup : _ t -> key * elt
-    val next_dup : _ t -> key * elt
-    val prev_dup : _ t -> key * elt
+    val first_dup : [> `Read ] t -> key * elt
+    val last_dup : [> `Read ] t -> key * elt
+    val next_dup : [> `Read ] t -> key * elt
+    val prev_dup : [> `Read ] t -> key * elt
 
-    val seek_dup : _ t -> key -> elt
-    val seek_range_dup : _ t -> key -> elt
-  end with type db := t
+    val seek_dup : [> `Read ] t -> key -> elt
+    val seek_range_dup : [> `Read ] t -> key -> elt
+  end with type -'cap db := 'cap t
 
   (** {2 Misc} *)
 
-  val stats : t -> Env.stats
+  val stats : ?txn: [> `Read ] Txn.t -> [> `Read ] t -> Env.stats
 
   (** [drop ?delete db] Empties [db].
       @param delete If [true] [db] is also deleted from the environment
       and the handle [db] invalidated. *)
-  val drop : ?delete:bool -> t -> unit
+  val drop : ?txn: [> `Write ] Txn.t -> ?delete:bool -> [> `Write ] t -> unit
 
   (** [compare_key db ?txn a b]
      Compares [a] and [b] as if they were keys in [db]. *)
-  val compare_key : t -> ?txn:_ Txn.t -> key -> key -> int
+  val compare_key : 'cap t -> ?txn:'cap' Txn.t -> key -> key -> int
 
   (** [compare db ?txn a b] Same as [compare_key]. *)
-  val compare : t -> ?txn:_ Txn.t -> key -> key -> int
+  val compare : 'cap t -> ?txn:'cap' Txn.t -> key -> key -> int
 
   (** [compare_elt db ?txn a b]
      Compares [a] and [b] as if they were data elements in a [dup_sort] [db]. *)
-  val compare_elt : t -> ?txn:_ Txn.t -> elt -> elt -> int
+  val compare_elt : 'cap t -> ?txn:'cap' Txn.t -> elt -> elt -> int
 end
 
 (** Database with string keys and string elements. *)

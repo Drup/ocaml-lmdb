@@ -40,7 +40,7 @@ let () =
 let pp_error fmt i =
   Format.fprintf fmt "%s@." (mdb_strerror i)
 
-type 'a cap =
+type 'cap cap =
   | Ro : [ `Read ] cap
   | Rw : [ `Read | `Write ] cap
 let ro = Ro
@@ -48,7 +48,7 @@ let rw = Rw
 
 module Env = struct
 
-  type t = mdb_env
+  type -'cap t = mdb_env
 
   (* exception Assert of (t * string) *)
 
@@ -71,7 +71,10 @@ module Env = struct
     let no_mem_init  = mdb_NOMEMINIT
   end
 
-  let create ?max_readers ?map_size ?max_dbs ?(flags=Flags.none) ?(mode=0o755) path =
+  let create (type c) (cap :c cap)
+      ?max_readers ?map_size ?max_dbs
+      ?(flags=Flags.none) ?(mode=0o755)
+      path =
     let mode = Mode.of_int mode in
     let env_ptr = alloc mdb_env in
     mdb_env_create env_ptr ;
@@ -81,7 +84,12 @@ module Env = struct
       opt_iter (mdb_env_set_maxdbs env) max_dbs ;
       opt_iter (mdb_env_set_maxreaders env) max_readers ;
       (* mdb_env_set_assert env (fun env s -> raise (Assert (env,s))) ; *)
-      mdb_env_open env path flags mode ;
+      begin match cap with
+        | Ro ->
+          mdb_env_open env path Flags.(flags + read_only) mode
+        | Rw ->
+          mdb_env_open env path flags mode
+      end ;
       Gc.finalise mdb_env_close env ;
       env
     with Error _ as exn -> mdb_env_close env; raise exn
@@ -166,28 +174,28 @@ end
 
 module Txn :
 sig
-  type -'a t = mdb_txn constraint 'a = [< `Read | `Write ]
+  type -'cap t = mdb_txn
 
   val go :
-    'a cap ->
-    Env.t ->
-    ?txn:([< `Read | `Write ] as 'a) t ->
-    ('a t -> 'b) -> 'b option
+    'cap cap ->
+    'cap Env.t ->
+    ?txn:'cap t ->
+    ('cap t -> 'a) -> 'a option
 
-  val abort : 'a t -> 'b
+  val abort : _ t -> 'b
 
-  val env : 'a t -> Env.t
+  val env : 'cap t -> 'cap Env.t
 
   (* not exported: *)
   val trivial :
-    'a cap ->
-    Env.t ->
-    ?txn:'a t ->
-    ('a t -> 'b) -> 'b
+    'cap cap ->
+    'cap Env.t ->
+    ?txn:'cap t ->
+    ('cap t -> 'a) -> 'a
 end
 =
 struct
-  type -'a t = mdb_txn constraint 'a = [< `Read | `Write ]
+  type -'cap t = mdb_txn
 
   exception Abort of mdb_txn
 
@@ -195,16 +203,10 @@ struct
 
   let abort txn = raise (Abort txn)
 
-  let go :
-    'a cap ->
-    Env.t ->
-    ?txn: 'a t ->
-    ('a t -> 'b) -> 'b option
-    =
-    fun (type c) (rw :c cap) env ?txn:parent f ->
+  let go (type c) (cap :c cap) env ?txn:parent f =
     let ptr_txn = alloc mdb_txn in
     let txn_flag =
-      match rw with
+      match cap with
       | Ro -> Env.Flags.read_only
       | Rw -> Env.Flags.none
     in
@@ -219,13 +221,7 @@ struct
       | exn -> mdb_txn_abort txn ; raise exn
 
   (* Used internally for trivial functions, not exported. *)
-  let trivial :
-    'a cap ->
-    Env.t ->
-    ?txn:'a t ->
-    ('a t -> 'b) -> 'b
-    =
-    fun rw e ?txn f ->
+  let trivial cap e ?txn f =
     match txn with
     | Some txn ->
       let e' = env txn in
@@ -234,7 +230,7 @@ struct
           "Lmdb: database and transaction are from different environments";
       f txn
     | None ->
-      match go rw e f with
+      match go cap e f with
       | None -> assert false
       | Some x -> x
 end
@@ -357,7 +353,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
   let has_dup_flag = Flags.(test dup_sort) def_flags
 
-  type t = {env : Env.t ; db : mdb_dbi }
+  type -'cap t = {env : 'cap Env.t ; db : mdb_dbi }
 
   type key = Key.t
   type elt = Elt.t
@@ -381,25 +377,30 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
   let write f v =
     f Bigstring.create v
 
-  let create ?(create=true) env name =
+  type 'cap create_mode =
+    | Create : [> `Read | `Write ] create_mode
+    | Open : _ create_mode
+  let create_db = Create
+  let open_db = Open
+
+  let create (type c) (mode :c create_mode) ?txn env name =
     let db = alloc mdb_dbi in
-    let flags =
-      if create
-      then Flags.(create + def_flags)
-      else def_flags
-    in
-    let f txn = mdb_dbi_open txn name flags db in
-    if create
-    then Txn.trivial rw env f
-    else Txn.trivial ro env f ;
+    begin match mode with
+      | Create ->
+        Txn.trivial rw env ?txn @@ fun txn ->
+        mdb_dbi_open txn name Flags.(create + def_flags) db
+      | Open ->
+        Txn.trivial ro env ?txn @@ fun txn ->
+        mdb_dbi_open txn name def_flags db
+    end;
     (* We do not put a finaliser here, as it would break with mdb_drop.
        Slight memory leak, but nothing terrible. *)
     (* Gc.finalise mdb_dbi_close env !@db *)
     { env ; db = !@db }
 
-  let stats { env ; db } =
+  let stats ?txn { env ; db } =
     let stats = make mdb_stat in
-    Txn.trivial ro env (fun t ->
+    Txn.trivial ro ?txn env (fun t ->
       mdb_dbi_stat t db (addr stats)
     ) ;
     Env.make_stats stats
@@ -411,8 +412,8 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
     ) ;
     !@flags
 
-  let drop ?(delete=false) { env ; db } =
-    Txn.trivial rw env (fun t ->
+  let drop ?txn ?(delete=false) { env ; db } =
+    Txn.trivial rw ?txn env (fun t ->
       mdb_drop t db delete
     )
 
@@ -470,7 +471,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
   module Cursor = struct
 
-    type -'a t = mdb_cursor constraint 'a = [< `Read | `Write ]
+    type -'cap t = mdb_cursor
 
     let go rw db ?txn f =
       let ptr_cursor = alloc mdb_cursor in
@@ -556,49 +557,53 @@ module IntDb = Make (Values.Key.Int) (Values.Elt.String)
 
 module type S = sig
 
-  type t
+  type -'cap t
 
   type key
   type elt
 
-  val create : ?create:bool -> Env.t -> string -> t
-  val get : t -> ?txn:[> `Read] Txn.t -> key -> elt
-  val put : t -> ?txn:[> `Read] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
-  val append : t -> ?txn:[> `Read] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
-  val remove : t -> ?txn:[> `Read] Txn.t -> ?elt:elt -> key -> unit
+  type 'cap create_mode
+  val create_db : [> `Read | `Write ] create_mode
+  val open_db : [> `Read ] create_mode
+
+  val create : 'cap create_mode -> ?txn:'cap Txn.t -> 'cap Env.t -> string -> 'cap t
+  val get : [> `Read ] t -> ?txn:[> `Read] Txn.t -> key -> elt
+  val put : [> `Read | `Write ] t -> ?txn:[> `Read] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
+  val append : [> `Read | `Write ] t -> ?txn:[> `Read] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
+  val remove : [> `Read | `Write ] t -> ?txn:[> `Read] Txn.t -> ?elt:elt -> key -> unit
 
   module Cursor : sig
-    type db
-    type -'a t constraint 'a = [< `Read | `Write ]
+    type -'cap db
+    type -'cap t
 
-    val go : 'c cap -> db -> ?txn:'c Txn.t -> ('c t -> 'a) -> 'a
+    val go : 'cap cap -> 'cap db -> ?txn:'cap Txn.t -> ('cap t -> 'a) -> 'a
 
-    val get : _ t -> key * elt
-    val put : [> `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
-    val put_here : [> `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
-    val remove : [> `Write ] t -> ?all:bool -> unit -> unit
+    val get : [> `Read ] t -> key * elt
+    val put : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
+    val put_here : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
+    val remove : [> `Read | `Write ] t -> ?all:bool -> unit -> unit
 
-    val first : _ t -> key * elt
-    val last : _ t -> key * elt
-    val next : _ t -> key * elt
-    val prev : _ t -> key * elt
+    val first : [> `Read ]  t -> key * elt
+    val last : [> `Read ] t -> key * elt
+    val next : [> `Read ] t -> key * elt
+    val prev : [> `Read ] t -> key * elt
 
-    val seek : _ t -> key -> elt
-    val seek_range : _ t -> key -> elt
+    val seek : [> `Read ] t -> key -> elt
+    val seek_range : [> `Read ] t -> key -> elt
 
-    val first_dup : _ t -> key * elt
-    val last_dup : _ t -> key * elt
-    val next_dup : _ t -> key * elt
-    val prev_dup : _ t -> key * elt
+    val first_dup : [> `Read ] t -> key * elt
+    val last_dup : [> `Read ] t -> key * elt
+    val next_dup : [> `Read ] t -> key * elt
+    val prev_dup : [> `Read ] t -> key * elt
 
-    val seek_dup : _ t -> key -> elt
-    val seek_range_dup : _ t -> key -> elt
+    val seek_dup : [> `Read ] t -> key -> elt
+    val seek_range_dup : [> `Read ] t -> key -> elt
 
-  end with type db := t
+  end with type -'cap db := 'cap t
 
-  val stats : t -> Env.stats
-  val drop : ?delete:bool -> t -> unit
-  val compare_key : t -> ?txn:_ Txn.t -> key -> key -> int
-  val compare : t -> ?txn:_ Txn.t -> key -> key -> int
-  val compare_elt : t -> ?txn:_ Txn.t -> elt -> elt -> int
+  val stats : ?txn: [> `Read ] Txn.t -> [> `Read ] t -> Env.stats
+  val drop : ?txn: [> `Write ] Txn.t -> ?delete:bool -> [> `Write ] t -> unit
+  val compare_key : _ t -> ?txn:_ Txn.t -> key -> key -> int
+  val compare : _ t -> ?txn:_ Txn.t -> key -> key -> int
+  val compare_elt : _ t -> ?txn:_ Txn.t -> elt -> elt -> int
 end
