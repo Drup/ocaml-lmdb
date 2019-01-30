@@ -246,7 +246,7 @@ module PutFlags = struct
   let no_overwrite = mdb_NOOVERWRITE
   let no_dup_data   = mdb_NODUPDATA
   let current     = mdb_CURRENT
-  let _reserve     = mdb_RESERVE
+  let reserve     = mdb_RESERVE
   let append      = mdb_APPEND
   let append_dup   = mdb_APPENDDUP
   let _multiple    = mdb_MULTIPLE
@@ -426,12 +426,43 @@ module Map = struct
         map.deserialise_val @@ bigstring_of_dbval v)
 
   let put map ?txn ?(flags=PutFlags.none) k v =
-    Txn.trivial rw ?txn map.env (fun txn ->
+    if Flags.(test dup_sort map.flags)
+    then begin
+      let ka = write map.serialise_key k in
+      let va = write map.serialise_val v in
+      Txn.trivial rw ?txn map.env @@ fun txn ->
       mdb_put txn map.dbi
-        (dbval_of_bigstring @@ write map.serialise_key k)
-        (dbval_of_bigstring @@ write map.serialise_val v)
+        (dbval_of_bigstring ka)
+        (dbval_of_bigstring va)
         flags
-    )
+    end
+    else begin
+      let ka = write map.serialise_key k in
+      let vptr = addr @@ make mdb_val in
+      Txn.trivial rw ?txn map.env @@ fun txn ->
+      let va_opt = ref None in
+      let alloc len =
+        if !va_opt <> None then
+          invalid_arg "Lmdb: converting function tried to allocate twice.";
+        vptr |-> mv_size <-@ len;
+        mdb_put txn map.dbi
+          (dbval_of_bigstring ka) vptr
+          PutFlags.(flags + reserve);
+        let va = bigstring_of_dbval vptr in
+        va_opt := Some va;
+        va
+      in
+      let va = map.serialise_val alloc v in
+      match !va_opt with
+      | Some va' ->
+        if va' != va then
+          invalid_arg "Lmdb: converting function allocated, but returned different buffer."
+      | None ->
+        mdb_put txn map.dbi
+          (dbval_of_bigstring ka)
+          (dbval_of_bigstring va)
+          flags
+    end
 
   let append map ?txn ?(flags=PutFlags.none) k v =
     let flags =
@@ -496,10 +527,41 @@ module Cursor = struct
   let write = Map.write
 
   let put { cursor ; map } ?(flags=PutFlags.none) k v =
-    mdb_cursor_put cursor
-      (dbval_of_bigstring @@ write map.serialise_key k)
-      (dbval_of_bigstring @@ write map.serialise_val v)
-      flags
+    if Map.Flags.(test dup_sort map.flags)
+    then begin
+      let ka = write map.serialise_key k in
+      let va = write map.serialise_val v in
+      mdb_cursor_put cursor
+        (dbval_of_bigstring ka)
+        (dbval_of_bigstring va)
+        flags
+    end
+    else begin
+      let ka = write map.serialise_key k in
+      let vptr = addr @@ make mdb_val in
+      let va_opt = ref None in
+      let alloc len =
+        if !va_opt <> None then
+          invalid_arg "Lmdb: converting function tried to allocate twice.";
+        vptr |-> mv_size <-@ len;
+        mdb_cursor_put cursor
+          (dbval_of_bigstring ka) vptr
+          PutFlags.(flags + reserve);
+        let va = bigstring_of_dbval vptr in
+        va_opt := Some va;
+        va
+      in
+      let va = map.serialise_val alloc v in
+      match !va_opt with
+      | Some va' ->
+        if va' != va then
+          invalid_arg "Lmdb: converting function allocated, but returned different buffer."
+      | None ->
+        mdb_cursor_put cursor
+          (dbval_of_bigstring ka)
+          (dbval_of_bigstring va)
+          flags
+    end
 
   let put_here cursor ?(flags=PutFlags.none) k v =
     put ~flags:PutFlags.(current + flags) cursor k v
@@ -672,12 +734,43 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
         Elt.read @@ bigstring_of_dbval v)
 
   let put { db ; env } ?txn ?(flags=PutFlags.none) k v =
-    Txn.trivial rw ?txn env (fun t ->
-      mdb_put t db
-        (dbval_of_bigstring @@ write Key.write k)
-        (dbval_of_bigstring @@ write Elt.write v)
+    if has_dup_flag
+    then begin
+      let ka = write Key.write k in
+      let va = write Elt.write v in
+      Txn.trivial rw ?txn env @@ fun txn ->
+      mdb_put txn db
+        (dbval_of_bigstring ka)
+        (dbval_of_bigstring va)
         flags
-    )
+    end
+    else begin
+      let ka = write Key.write k in
+      let vptr = addr @@ make mdb_val in
+      Txn.trivial rw ?txn env @@ fun txn ->
+      let va_opt = ref None in
+      let alloc len =
+        if !va_opt <> None then
+          invalid_arg "Lmdb: converting function tried to allocate twice.";
+        vptr |-> mv_size <-@ len;
+        mdb_put txn db
+          (dbval_of_bigstring ka) vptr
+          PutFlags.(flags + reserve);
+        let va = bigstring_of_dbval vptr in
+        va_opt := Some va;
+        va
+      in
+      let va = Elt.write alloc v in
+      match !va_opt with
+      | Some va' ->
+        if va' != va then
+          invalid_arg "Lmdb: converting function allocated, but returned different buffer."
+      | None ->
+        mdb_put txn db
+          (dbval_of_bigstring ka)
+          (dbval_of_bigstring va)
+          flags
+    end
 
   let append db ?txn ?(flags=PutFlags.none) k v =
     let flags =
@@ -733,10 +826,41 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       with exn -> mdb_cursor_close cursor ; raise exn
 
     let put cursor ?(flags=PutFlags.none) k v =
+    if has_dup_flag
+    then begin
+      let ka = write Key.write k in
+      let va = write Elt.write v in
       mdb_cursor_put cursor
-        (dbval_of_bigstring @@ write Key.write k)
-        (dbval_of_bigstring @@ write Elt.write v)
+        (dbval_of_bigstring ka)
+        (dbval_of_bigstring va)
         flags
+    end
+    else begin
+      let ka = write Key.write k in
+      let vptr = addr @@ make mdb_val in
+      let va_opt = ref None in
+      let alloc len =
+        if !va_opt <> None then
+          invalid_arg "Lmdb: converting function tried to allocate twice.";
+        vptr |-> mv_size <-@ len;
+        mdb_cursor_put cursor
+          (dbval_of_bigstring ka) vptr
+          PutFlags.(flags + reserve);
+        let va = bigstring_of_dbval vptr in
+        va_opt := Some va;
+        va
+      in
+      let va = Elt.write alloc v in
+      match !va_opt with
+      | Some va' ->
+        if va' != va then
+          invalid_arg "Lmdb: converting function allocated, but returned different buffer."
+      | None ->
+        mdb_cursor_put cursor
+          (dbval_of_bigstring ka)
+          (dbval_of_bigstring va)
+          flags
+    end
 
     let put_here cursor ?(flags=PutFlags.none) k v =
       put ~flags:PutFlags.(current + flags) cursor k v
