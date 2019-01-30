@@ -6,7 +6,7 @@ SETUP = ocaml setup.ml
 build: setup.data
 	$(SETUP) -build $(BUILDFLAGS)
 
-doc: setup.data build
+doc: setup.data
 	$(SETUP) -doc $(DOCFLAGS)
 
 test: setup.data build
