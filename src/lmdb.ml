@@ -16,10 +16,6 @@ let opt_iter f = function
   | None -> ()
   | Some x -> f x
 
-let opt_map f = function
-  | None -> None
-  | Some x -> Some (f x)
-
 (** {2 High level binding} *)
 
 let version () =
@@ -43,6 +39,12 @@ let () =
 
 let pp_error fmt i =
   Format.fprintf fmt "%s@." (mdb_strerror i)
+
+type 'a cap =
+  | Ro : [ `Read ] cap
+  | Rw : [ `Read | `Write ] cap
+let ro = Ro
+let rw = Rw
 
 module Env = struct
 
@@ -162,21 +164,80 @@ module Env = struct
 
 end
 
-(* Use internally for trivial functions *)
-let trivial_txn ~write env f =
-  let txn = alloc mdb_txn in
-  let txn_flag = if write
-    then Env.Flags.none
-    else Env.Flags.read_only
-  in
-  mdb_txn_begin env None txn_flag txn ;
-  try
-    let x = f !@txn in
-    mdb_txn_commit !@txn ;
-    x
-  with e ->
-    mdb_txn_abort !@txn ;
-    raise e
+module Txn :
+sig
+  type -'a t = mdb_txn constraint 'a = [< `Read | `Write ]
+
+  val go :
+    'a cap ->
+    Env.t ->
+    ?txn:([< `Read | `Write ] as 'a) t ->
+    ('a t -> 'b) -> 'b option
+
+  val abort : 'a t -> 'b
+
+  val env : 'a t -> Env.t
+
+  (* not exported: *)
+  val trivial :
+    'a cap ->
+    Env.t ->
+    ?txn:'a t ->
+    ('a t -> 'b) -> 'b
+end
+=
+struct
+  type -'a t = mdb_txn constraint 'a = [< `Read | `Write ]
+
+  exception Abort of mdb_txn
+
+  let env txn = mdb_txn_env txn
+
+  let abort txn = raise (Abort txn)
+
+  let go :
+    'a cap ->
+    Env.t ->
+    ?txn: 'a t ->
+    ('a t -> 'b) -> 'b option
+    =
+    fun (type c) (rw :c cap) env ?txn:parent f ->
+    let ptr_txn = alloc mdb_txn in
+    let txn_flag =
+      match rw with
+      | Ro -> Env.Flags.read_only
+      | Rw -> Env.Flags.none
+    in
+    mdb_txn_begin env parent txn_flag ptr_txn ;
+    let txn = !@ptr_txn in
+    try
+      let x = f txn in
+      mdb_txn_commit txn ; Some x
+    with
+      | Abort t' when t' == txn || parent = None ->
+        mdb_txn_abort txn ; None
+      | exn -> mdb_txn_abort txn ; raise exn
+
+  (* Used internally for trivial functions, not exported. *)
+  let trivial :
+    'a cap ->
+    Env.t ->
+    ?txn:'a t ->
+    ('a t -> 'b) -> 'b
+    =
+    fun rw e ?txn f ->
+    match txn with
+    | Some txn ->
+      let e' = env txn in
+      if ptr_compare e' e <> 0
+      then invalid_arg
+          "Lmdb: database and transaction are from different environments";
+      f txn
+    | None ->
+      match go rw e f with
+      | None -> assert false
+      | Some x -> x
+end
 
 
 module PutFlags = struct
@@ -290,8 +351,6 @@ module Values = struct
 end
 
 
-exception Abort of mdb_txn
-
 module Make (Key : Values.S) (Elt : Values.S) = struct
 
   let def_flags = Flags.(Key.default_flags + Elt.default_flags)
@@ -330,8 +389,9 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       else def_flags
     in
     let f txn = mdb_dbi_open txn name flags db in
-    trivial_txn ~write:create env f ;
-
+    if create
+    then Txn.trivial rw env f
+    else Txn.trivial ro env f ;
     (* We do not put a finaliser here, as it would break with mdb_drop.
        Slight memory leak, but nothing terrible. *)
     (* Gc.finalise mdb_dbi_close env !@db *)
@@ -339,39 +399,47 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
   let stats { env ; db } =
     let stats = make mdb_stat in
-    trivial_txn ~write:false env (fun t ->
+    Txn.trivial ro env (fun t ->
       mdb_dbi_stat t db (addr stats)
     ) ;
     Env.make_stats stats
 
   let _flags { env ; db } =
     let flags = alloc mdb_dbi_open_flag in
-    trivial_txn ~write:false env (fun t ->
+    Txn.trivial ro env (fun t ->
       mdb_dbi_flags t db flags
     ) ;
     !@flags
 
   let drop ?(delete=false) { env ; db } =
-    trivial_txn ~write:true env (fun t ->
+    Txn.trivial rw env (fun t ->
       mdb_drop t db delete
     )
 
-  let get { db ; env } k =
+  let get { db ; env } ?txn k =
     let v = addr @@ make mdb_val in
-    trivial_txn ~write:false env (fun t ->
+    Txn.trivial ro ?txn env (fun t ->
         mdb_get t db (dbval_of_buffer @@ write Key.write k) v;
         Elt.read @@ buffer_of_dbval v)
 
-  let put ?(flags=PutFlags.none) { db ; env } k v =
-    trivial_txn ~write:true env (fun t ->
+  let put { db ; env } ?txn ?(flags=PutFlags.none) k v =
+    Txn.trivial rw ?txn env (fun t ->
       mdb_put t db
         (dbval_of_buffer @@ write Key.write k)
         (dbval_of_buffer @@ write Elt.write v)
         flags
     )
 
-  let remove ?elt { db ; env } k =
-    trivial_txn ~write:true env (fun t ->
+  let append db ?txn ?(flags=PutFlags.none) k v =
+    let flags =
+      let open PutFlags in
+      flags +
+      if has_dup_flag then PutFlags.append_dup else PutFlags.append
+    in
+    put db ?txn ~flags k v
+
+  let remove { db ; env } ?txn ?elt k =
+    Txn.trivial rw ?txn env (fun t ->
       match elt with
         | Some v ->
           mdb_del t db
@@ -383,109 +451,31 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
             (from_voidp mdb_val null)
     )
 
-  module Txn = struct
+  let compare_key { db ; env } ?txn x y =
+    Txn.trivial ro ?txn env @@ fun txn ->
+    mdb_cmp txn db
+      (dbval_of_buffer @@ write Key.write x)
+      (dbval_of_buffer @@ write Key.write y)
 
-    type 'a txn = { txn : mdb_txn ; db : mdb_dbi }
-      constraint 'a = [< `Read | `Write ]
-
-    let go ?parent ~rw { env ; db } f =
-      let ptr_txn = alloc mdb_txn in
-      let parent = opt_map (fun x -> x.txn) parent in
-      let txn_flag = match rw with
-        | `Write -> Env.Flags.none
-        | `Read -> Env.Flags.read_only
-      in
-      mdb_txn_begin env parent txn_flag ptr_txn ;
-      let txn = !@ptr_txn in
-      try
-        let x = f { txn = txn ; db } in
-        mdb_txn_commit txn ; Some x
-      with
-        | Abort t' when t' == txn || parent = None ->
-          mdb_txn_abort txn ; None
-        | exn -> mdb_txn_abort txn ; raise exn
-
-    let abort { txn ; _ } = raise (Abort txn)
-
-    let stats { txn ; db } =
-      let stats = make mdb_stat in
-      mdb_dbi_stat txn db (addr stats) ;
-      Env.make_stats stats
-
-    let flags { txn ; db } =
-      let flags = alloc mdb_dbi_open_flag in
-      mdb_dbi_flags txn db flags ;
-      !@flags
-
-    let drop ?(delete=false) { txn ; db } =
-      mdb_drop txn db delete
-
-    let get { db ; txn } k =
-      let v = addr @@ make mdb_val in
-      mdb_get txn db (dbval_of_buffer @@ write Key.write k) v ;
-      Elt.read @@ buffer_of_dbval v
-
-    let put ?(flags=PutFlags.none) { db ; txn } k v =
-      mdb_put txn db
-        (dbval_of_buffer @@ write Key.write k)
-        (dbval_of_buffer @@ write Elt.write v)
-        flags
-
-    let append t k v =
-      let flags =
-        if has_dup_flag then PutFlags.append_dup else PutFlags.append
-      in
-      put ~flags t k v
-
-    let remove ?elt { db ; txn } k =
-      match elt with
-        | Some v ->
-          mdb_del txn db
-            (dbval_of_buffer @@ write Key.write k)
-            (dbval_of_buffer @@ write Elt.write v)
-        | None ->
-          mdb_del txn db
-            (dbval_of_buffer @@ write Key.write k)
-            (from_voidp mdb_val null)
-
-    let env { txn ; _ } = mdb_txn_env txn
-
-    let compare_key { db ; txn } :key -> key -> int =
-      fun x y ->
-      mdb_cmp txn db
-        (dbval_of_buffer @@ write Key.write x)
-        (dbval_of_buffer @@ write Key.write y)
-
-    let compare_elt ({ db ; txn } as t) :elt -> elt -> int =
-      if not (Flags.(test dup_sort) @@ flags t) then
-        invalid_arg "Lmdb: elements are only comparable in a dup_sort db";
-      fun x y ->
-      mdb_dcmp txn db
-        (dbval_of_buffer @@ write Elt.write x)
-        (dbval_of_buffer @@ write Elt.write y)
-
-    let compare = compare_key
-
-  end
-
-  let append { db ; env } k v =
-    trivial_txn ~write:true env @@ fun txn -> Txn.append {Txn. db ; txn} k v
-
-  let compare_key {db ; env} x y =
-    trivial_txn ~write:false env @@ fun txn -> Txn.compare_key {Txn. db ; txn} x y
-
-  let compare_elt {db ; env} x y =
-    trivial_txn ~write:false env @@ fun txn -> Txn.compare_elt {Txn. db ; txn} x y
+  let compare_elt { db ; env } ?txn :elt -> elt -> int =
+    if not has_dup_flag then
+      invalid_arg "Lmdb: elements are only comparable in a dup_sort db";
+    fun x y ->
+    Txn.trivial ro ?txn env @@ fun txn ->
+    mdb_dcmp txn db
+      (dbval_of_buffer @@ write Elt.write x)
+      (dbval_of_buffer @@ write Elt.write y)
 
   let compare = compare_key
 
   module Cursor = struct
 
-    type 'a t = mdb_cursor constraint 'a = [< `Read | `Write ]
+    type -'a t = mdb_cursor constraint 'a = [< `Read | `Write ]
 
-    let go {Txn. txn ; db } ~f =
+    let go rw db ?txn f =
       let ptr_cursor = alloc mdb_cursor in
-      mdb_cursor_open txn db ptr_cursor ;
+      Txn.trivial rw ?txn db.env @@ fun txn ->
+      mdb_cursor_open txn db.db ptr_cursor ;
       let cursor : _ t = !@ptr_cursor in
       try
         let res = f cursor in
@@ -493,16 +483,16 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
         res
       with exn -> mdb_cursor_close cursor ; raise exn
 
-    let put ?(flags=PutFlags.none) cursor k v =
+    let put cursor ?(flags=PutFlags.none) k v =
       mdb_cursor_put cursor
         (dbval_of_buffer @@ write Key.write k)
         (dbval_of_buffer @@ write Elt.write v)
         flags
 
-    let put_here ?(flags=PutFlags.none) cursor k v =
+    let put_here cursor ?(flags=PutFlags.none) k v =
       put ~flags:PutFlags.(current + flags) cursor k v
 
-    let remove ?(all=false) cursor =
+    let remove cursor ?(all=false) () =
       let flag =
         if all
         then
@@ -537,8 +527,8 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
     let seek = seek_prim MDB_SET
     let seek_range = seek_prim MDB_SET_RANGE
 
-    let test_dup s f flag x =
-      if has_dup_flag then f flag x
+    let test_dup s f op cursor =
+      if has_dup_flag then f op cursor
       else raise @@ Invalid_argument (Printf.sprintf
             "Lmdb.Cursor.%s: Operation unsuported: this database does not have the \
              dupsort flag enabled." s)
@@ -572,45 +562,21 @@ module type S = sig
   type elt
 
   val create : ?create:bool -> Env.t -> string -> t
-  val get : t -> key -> elt
-  val put : ?flags:PutFlags.t -> t -> key -> elt -> unit
-  val append : t -> key -> elt -> unit
-  val remove : ?elt:elt -> t -> key -> unit
-
-  module Txn : sig
-
-    type 'a txn constraint 'a = [< `Read | `Write ]
-
-    val go :
-      ?parent:([< `Read | `Write ] as 'a) txn ->
-      rw:'a ->
-      t ->
-      ('a txn -> 'b) -> 'b option
-
-    val abort : 'a txn -> 'b
-    val get : 'a txn -> key -> elt
-    val put : ?flags:PutFlags.t -> [> `Write ] txn -> key -> elt -> unit
-    val append : [> `Write] txn -> key -> elt -> unit
-    val remove : ?elt:elt -> [> `Write ] txn -> key -> unit
-    val env : 'a txn -> Env.t
-    val stats : 'a txn -> Env.stats
-    val compare : 'a txn -> key -> key -> int
-    val compare_key : 'a txn -> key -> key -> int
-    val compare_elt : 'a txn -> elt -> elt -> int
-    val drop : ?delete:bool -> [< `Write ] txn -> unit
-
-  end
+  val get : t -> ?txn:[> `Read] Txn.t -> key -> elt
+  val put : t -> ?txn:[> `Read] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
+  val append : t -> ?txn:[> `Read] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
+  val remove : t -> ?txn:[> `Read] Txn.t -> ?elt:elt -> key -> unit
 
   module Cursor : sig
+    type db
+    type -'a t constraint 'a = [< `Read | `Write ]
 
-    type 'a t constraint 'a = [< `Read | `Write ]
-
-    val go : 'cap Txn.txn -> f:('cap t -> 'a) -> 'a
+    val go : 'c cap -> db -> ?txn:'c Txn.t -> ('c t -> 'a) -> 'a
 
     val get : _ t -> key * elt
-    val put : ?flags:PutFlags.t -> [> `Write ] t -> key -> elt -> unit
-    val put_here : ?flags:PutFlags.t -> [> `Write ] t -> key -> elt -> unit
-    val remove : ?all:bool -> [> `Write ] t -> unit
+    val put : [> `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
+    val put_here : [> `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
+    val remove : [> `Write ] t -> ?all:bool -> unit -> unit
 
     val first : _ t -> key * elt
     val last : _ t -> key * elt
@@ -628,11 +594,11 @@ module type S = sig
     val seek_dup : _ t -> key -> elt
     val seek_range_dup : _ t -> key -> elt
 
-  end
+  end with type db := t
 
   val stats : t -> Env.stats
   val drop : ?delete:bool -> t -> unit
-  val compare : t -> key -> key -> int
-  val compare_key : t -> key -> key -> int
-  val compare_elt : t -> elt -> elt -> int
+  val compare_key : t -> ?txn:_ Txn.t -> key -> key -> int
+  val compare : t -> ?txn:_ Txn.t -> key -> key -> int
+  val compare_elt : t -> ?txn:_ Txn.t -> elt -> elt -> int
 end
