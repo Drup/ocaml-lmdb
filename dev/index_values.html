@@ -24,45 +24,39 @@
 <tr><td><a href="Lmdb.Env.Flags.html#VAL(+)">(+)</a> [<a href="Lmdb.Env.Flags.html">Lmdb.Env.Flags</a>]</td>
 <td></td></tr>
 <tr><td align="left"><div>A</div></td></tr>
-<tr><td><a href="Lmdb.S.Txn.html#VALabort">abort</a> [<a href="Lmdb.S.Txn.html">Lmdb.S.Txn</a>]</td>
+<tr><td><a href="Lmdb.Txn.html#VALabort">abort</a> [<a href="Lmdb.Txn.html">Lmdb.Txn</a>]</td>
 <td><div class="info">
 <p><code class="code">abort&nbsp;txn</code> will abort the transaction.</p>
 
 </div>
 </td></tr>
-<tr><td><a href="Lmdb.S.Txn.html#VALappend">append</a> [<a href="Lmdb.S.Txn.html">Lmdb.S.Txn</a>]</td>
-<td><div class="info">
-<p><code class="code">append&nbsp;txn&nbsp;k&nbsp;v</code> append <code class="code">k,&nbsp;v</code> at the end of the database without performing comparisons.</p>
-
-</div>
-</td></tr>
 <tr><td><a href="Lmdb.S.html#VALappend">append</a> [<a href="Lmdb.S.html">Lmdb.S</a>]</td>
 <td><div class="info">
-<p><code class="code">append&nbsp;db&nbsp;k&nbsp;v</code> append <code class="code">k,&nbsp;v</code> at the end of the database <code class="code">db</code> without performing comparisons.</p>
+<p><code class="code">append&nbsp;db&nbsp;k&nbsp;v</code> like <code class="code">put</code>, but append <code class="code">k,&nbsp;v</code> at the end of the database <code class="code">db</code> without performing comparisons.</p>
 
 </div>
 </td></tr>
 <tr><td align="left"><div>C</div></td></tr>
-<tr><td><a href="Lmdb.S.Txn.html#VALcompare">compare</a> [<a href="Lmdb.S.Txn.html">Lmdb.S.Txn</a>]</td>
-<td></td></tr>
 <tr><td><a href="Lmdb.S.html#VALcompare">compare</a> [<a href="Lmdb.S.html">Lmdb.S</a>]</td>
-<td></td></tr>
-<tr><td><a href="Lmdb.S.Txn.html#VALcompare_elt">compare_elt</a> [<a href="Lmdb.S.Txn.html">Lmdb.S.Txn</a>]</td>
 <td><div class="info">
-<p>The comparison functions used by the database.</p>
+<p><code class="code">compare&nbsp;db&nbsp;?txn&nbsp;a&nbsp;b</code> Same as <code class="code">compare_key</code>.</p>
 
 </div>
 </td></tr>
 <tr><td><a href="Lmdb.S.html#VALcompare_elt">compare_elt</a> [<a href="Lmdb.S.html">Lmdb.S</a>]</td>
 <td><div class="info">
-<p>The comparison functions used by the database.</p>
+<p><code class="code">compare_elt&nbsp;db&nbsp;?txn&nbsp;a&nbsp;b</code>
+     Compares <code class="code">a</code> and <code class="code">b</code> as if they were data elements in a <code class="code">dup_sort</code> <code class="code">db</code>.</p>
 
 </div>
 </td></tr>
-<tr><td><a href="Lmdb.S.Txn.html#VALcompare_key">compare_key</a> [<a href="Lmdb.S.Txn.html">Lmdb.S.Txn</a>]</td>
-<td></td></tr>
 <tr><td><a href="Lmdb.S.html#VALcompare_key">compare_key</a> [<a href="Lmdb.S.html">Lmdb.S</a>]</td>
-<td></td></tr>
+<td><div class="info">
+<p><code class="code">compare_key&nbsp;db&nbsp;?txn&nbsp;a&nbsp;b</code>
+     Compares <code class="code">a</code> and <code class="code">b</code> as if they were keys in <code class="code">db</code>.</p>
+
+</div>
+</td></tr>
 <tr><td><a href="Lmdb.Env.html#VALcopy">copy</a> [<a href="Lmdb.Env.html">Lmdb.Env</a>]</td>
 <td></td></tr>
 <tr><td><a href="Lmdb.Env.html#VALcopyfd">copyfd</a> [<a href="Lmdb.Env.html">Lmdb.Env</a>]</td>
@@ -82,16 +76,18 @@
 <tr><td align="left"><div>D</div></td></tr>
 <tr><td><a href="Lmdb.Values.S.html#VALdefault_flags">default_flags</a> [<a href="Lmdb.Values.S.html">Lmdb.Values.S</a>]</td>
 <td></td></tr>
-<tr><td><a href="Lmdb.S.Txn.html#VALdrop">drop</a> [<a href="Lmdb.S.Txn.html">Lmdb.S.Txn</a>]</td>
-<td></td></tr>
 <tr><td><a href="Lmdb.S.html#VALdrop">drop</a> [<a href="Lmdb.S.html">Lmdb.S</a>]</td>
-<td></td></tr>
+<td><div class="info">
+<p><code class="code">drop&nbsp;?delete&nbsp;db</code> Empties <code class="code">db</code>.</p>
+
+</div>
+</td></tr>
 <tr><td><a href="Lmdb.Values.Flags.html#VALdup_fixed">dup_fixed</a> [<a href="Lmdb.Values.Flags.html">Lmdb.Values.Flags</a>]</td>
 <td></td></tr>
 <tr><td><a href="Lmdb.Values.Flags.html#VALdup_sort">dup_sort</a> [<a href="Lmdb.Values.Flags.html">Lmdb.Values.Flags</a>]</td>
 <td></td></tr>
 <tr><td align="left"><div>E</div></td></tr>
-<tr><td><a href="Lmdb.S.Txn.html#VALenv">env</a> [<a href="Lmdb.S.Txn.html">Lmdb.S.Txn</a>]</td>
+<tr><td><a href="Lmdb.Txn.html#VALenv">env</a> [<a href="Lmdb.Txn.html">Lmdb.Txn</a>]</td>
 <td></td></tr>
 <tr><td><a href="Lmdb.Values.Flags.html#VALeq">eq</a> [<a href="Lmdb.Values.Flags.html">Lmdb.Values.Flags</a>]</td>
 <td></td></tr>
@@ -121,12 +117,6 @@
 
 </div>
 </td></tr>
-<tr><td><a href="Lmdb.S.Txn.html#VALget">get</a> [<a href="Lmdb.S.Txn.html">Lmdb.S.Txn</a>]</td>
-<td><div class="info">
-<p><code class="code">get&nbsp;txn&nbsp;k</code> returns the value associated to <code class="code">k</code>.</p>
-
-</div>
-</td></tr>
 <tr><td><a href="Lmdb.S.html#VALget">get</a> [<a href="Lmdb.S.html">Lmdb.S</a>]</td>
 <td><div class="info">
 <p><code class="code">get&nbsp;db&nbsp;k</code> returns the value associated to <code class="code">k</code>.</p>
@@ -135,14 +125,15 @@
 </td></tr>
 <tr><td><a href="Lmdb.S.Cursor.html#VALgo">go</a> [<a href="Lmdb.S.Cursor.html">Lmdb.S.Cursor</a>]</td>
 <td><div class="info">
-<p><code class="code">go&nbsp;txn&nbsp;f</code> makes a cursor in the transaction <code class="code">txn</code> using the function <code class="code">f</code>.</p>
+<p><code class="code">go&nbsp;cap&nbsp;db&nbsp;?txn&nbsp;f</code> makes a cursor in the transaction <code class="code">txn</code> using the
+       function <code class="code">f&nbsp;cursor</code>.</p>
 
 </div>
 </td></tr>
-<tr><td><a href="Lmdb.S.Txn.html#VALgo">go</a> [<a href="Lmdb.S.Txn.html">Lmdb.S.Txn</a>]</td>
+<tr><td><a href="Lmdb.Txn.html#VALgo">go</a> [<a href="Lmdb.Txn.html">Lmdb.Txn</a>]</td>
 <td><div class="info">
-<p><code class="code">go&nbsp;~rw&nbsp;db&nbsp;f</code> makes a transaction in <code class="code">db</code> with the permission <code class="code">rw</code>
-        and using the function <code class="code">f</code>.</p>
+<p><code class="code">go&nbsp;cap&nbsp;env&nbsp;?txn&nbsp;f</code> makes a transaction in <code class="code">env</code> with the capabilities <code class="code">cap</code>
+      and using the function <code class="code">f&nbsp;txn</code>.</p>
 
 </div>
 </td></tr>
@@ -225,12 +216,6 @@
 
 </div>
 </td></tr>
-<tr><td><a href="Lmdb.S.Txn.html#VALput">put</a> [<a href="Lmdb.S.Txn.html">Lmdb.S.Txn</a>]</td>
-<td><div class="info">
-<p><code class="code">put&nbsp;txn&nbsp;k&nbsp;v</code> associates the key <code class="code">k</code> to the value <code class="code">v</code>.</p>
-
-</div>
-</td></tr>
 <tr><td><a href="Lmdb.S.html#VALput">put</a> [<a href="Lmdb.S.html">Lmdb.S</a>]</td>
 <td><div class="info">
 <p><code class="code">put&nbsp;db&nbsp;k&nbsp;v</code> associates the key <code class="code">k</code> to the value <code class="code">v</code> in the database <code class="code">db</code>.</p>
@@ -258,12 +243,6 @@
 
 </div>
 </td></tr>
-<tr><td><a href="Lmdb.S.Txn.html#VALremove">remove</a> [<a href="Lmdb.S.Txn.html">Lmdb.S.Txn</a>]</td>
-<td><div class="info">
-<p><code class="code">remove&nbsp;txn&nbsp;k</code> removes <code class="code">k</code> from the database.</p>
-
-</div>
-</td></tr>
 <tr><td><a href="Lmdb.S.html#VALremove">remove</a> [<a href="Lmdb.S.html">Lmdb.S</a>]</td>
 <td><div class="info">
 <p><code class="code">remove&nbsp;db&nbsp;k</code> removes <code class="code">k</code> from <code class="code">db</code>.</p>
@@ -273,6 +252,10 @@
 <tr><td><a href="Lmdb.Values.Flags.html#VALreverse_dup">reverse_dup</a> [<a href="Lmdb.Values.Flags.html">Lmdb.Values.Flags</a>]</td>
 <td></td></tr>
 <tr><td><a href="Lmdb.Values.Flags.html#VALreverse_key">reverse_key</a> [<a href="Lmdb.Values.Flags.html">Lmdb.Values.Flags</a>]</td>
+<td></td></tr>
+<tr><td><a href="Lmdb.html#VALro">ro</a> [<a href="Lmdb.html">Lmdb</a>]</td>
+<td></td></tr>
+<tr><td><a href="Lmdb.html#VALrw">rw</a> [<a href="Lmdb.html">Lmdb</a>]</td>
 <td></td></tr>
 <tr><td align="left"><div>S</div></td></tr>
 <tr><td><a href="Lmdb.S.Cursor.html#VALseek">seek</a> [<a href="Lmdb.S.Cursor.html">Lmdb.S.Cursor</a>]</td>
@@ -295,8 +278,6 @@
 <tr><td><a href="Lmdb.Env.html#VALset_flags">set_flags</a> [<a href="Lmdb.Env.html">Lmdb.Env</a>]</td>
 <td></td></tr>
 <tr><td><a href="Lmdb.Env.html#VALset_map_size">set_map_size</a> [<a href="Lmdb.Env.html">Lmdb.Env</a>]</td>
-<td></td></tr>
-<tr><td><a href="Lmdb.S.Txn.html#VALstats">stats</a> [<a href="Lmdb.S.Txn.html">Lmdb.S.Txn</a>]</td>
 <td></td></tr>
 <tr><td><a href="Lmdb.S.html#VALstats">stats</a> [<a href="Lmdb.S.html">Lmdb.S</a>]</td>
 <td></td></tr>

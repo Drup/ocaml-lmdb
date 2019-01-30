@@ -5,7 +5,6 @@
 <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="Start" href="index.html">
-<link rel="previous" href="Lmdb.S.Txn.html">
 <link rel="Up" href="Lmdb.S.html">
 <link title="Index of types" rel=Appendix href="index_types.html">
 <link title="Index of exceptions" rel=Appendix href="index_exceptions.html">
@@ -16,19 +15,18 @@
 <title>Lmdb.S.Cursor</title>
 </head>
 <body>
-<div class="navbar"><a class="pre" href="Lmdb.S.Txn.html" title="Lmdb.S.Txn">Previous</a>
-&nbsp;<a class="up" href="Lmdb.S.html" title="Lmdb.S">Up</a>
+<div class="navbar">&nbsp;<a class="up" href="Lmdb.S.html" title="Lmdb.S">Up</a>
 &nbsp;</div>
 <h1>Module <a href="type_Lmdb.S.Cursor.html">Lmdb.S.Cursor</a></h1>
 
-<pre><span id="MODULECursor"><span class="keyword">module</span> Cursor</span>: <code class="code"><span class="keyword">sig</span></code> <a href="Lmdb.S.Cursor.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><div class="info module top">
+<pre><span id="MODULECursor"><span class="keyword">module</span> Cursor</span>: <code class="code"><span class="keyword">sig</span></code> <a href="Lmdb.S.Cursor.html">..</a> <code class="code"><span class="keyword">end</span></code><code class="type">  with type db := t</code></pre><div class="info module top">
 <div class="info-desc">
 <p>Manual iterators.</p>
 </div>
 </div>
 <hr width="100%">
 
-<pre><span id="TYPEt"><span class="keyword">type</span> <code class="type">[< `Read | `Write ]</code> t</span> </pre>
+<pre><span id="TYPEt"><span class="keyword">type</span> <code class="type">-[< `Read | `Write ]</code> t</span> </pre>
 <div class="info ">
 <div class="info-desc">
 <p>A cursor allows to iterates manually on the database.
@@ -37,17 +35,18 @@
 </div>
 
 
-<pre><span id="VALgo"><span class="keyword">val</span> go</span> : <code class="type">([< `Read | `Write ] as 'b) <a href="Lmdb.S.Txn.html#TYPEtxn">Lmdb.S.Txn.txn</a> -><br>       f:('b <a href="Lmdb.S.Cursor.html#TYPEt">t</a> -> 'a) -> 'a</code></pre><div class="info ">
+<pre><span id="VALgo"><span class="keyword">val</span> go</span> : <code class="type">([< `Read | `Write ] as 'b) <a href="Lmdb.html#TYPEcap">Lmdb.cap</a> -><br>       <a href="Lmdb.S.Cursor.html#TYPEt">t</a> -> ?txn:'b <a href="Lmdb.Txn.html#TYPEt">Lmdb.Txn.t</a> -> ('b <a href="Lmdb.S.Cursor.html#TYPEt">t</a> -> 'a) -> 'a</code></pre><div class="info ">
 <div class="info-desc">
-<p><code class="code">go&nbsp;txn&nbsp;f</code> makes a cursor in the transaction <code class="code">txn</code> using the function <code class="code">f</code>.</p>
+<p><code class="code">go&nbsp;cap&nbsp;db&nbsp;?txn&nbsp;f</code> makes a cursor in the transaction <code class="code">txn</code> using the
+       function <code class="code">f&nbsp;cursor</code>.</p>
 
-<p>The function <code class="code">f</code> will receive the cursor.
-        A cursor can only be create and used inside a transaction. The cursor
+<p>The function <code class="code">f</code> will receive the <code class="code">cursor</code>.
+        A cursor can only be created and used inside a transaction. The cursor
         inherits the permissions of the transaction.
         The cursor should not be leaked outside of <code class="code">f</code>.</p>
 
-<p>Here is an example that returns the first 5 elements of a database:</p>
-<pre class="codepre"><code class="code">go txn <span class="keyword">begin</span> <span class="keyword">fun</span> c <span class="keywordsign">-&gt;</span>
+<p>Here is an example that returns the first 5 elements of a <code class="code">db</code>:</p>
+<pre class="codepre"><code class="code">go ro db <span class="keyword">begin</span> <span class="keyword">fun</span> c <span class="keywordsign">-&gt;</span>
   <span class="keyword">let</span> h = first c <span class="keyword">in</span>
   <span class="keyword">let</span> <span class="keyword">rec</span> aux i =
     <span class="keyword">if</span> i &lt; 5 <span class="keyword">then</span> next c :: aux (i+1)
@@ -57,6 +56,8 @@
 <span class="keyword">end</span>
         </code></pre></div>
 </div>
+<div class="param_info"><code class="code">txn</code> : if not provided, a transaction will implicitely be created
+        and committed after <code class="code">f</code> returns.</div>
 
 <pre><span id="VALget"><span class="keyword">val</span> get</span> : <code class="type">[< `Read | `Write ] <a href="Lmdb.S.Cursor.html#TYPEt">t</a> -> <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> * <a href="Lmdb.S.html#TYPEelt">Lmdb.S.elt</a></code></pre><div class="info ">
 <div class="info-desc">
@@ -64,14 +65,14 @@
 </div>
 </div>
 
-<pre><span id="VALput"><span class="keyword">val</span> put</span> : <code class="type">?flags:<a href="Lmdb.PutFlags.html#TYPEt">Lmdb.PutFlags.t</a> -><br>       [< `Read | `Write > `Write ] <a href="Lmdb.S.Cursor.html#TYPEt">t</a> -><br>       <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> <a href="Lmdb.S.html#TYPEelt">Lmdb.S.elt</a> -> unit</code></pre><div class="info ">
+<pre><span id="VALput"><span class="keyword">val</span> put</span> : <code class="type">[< `Read | `Write > `Write ] <a href="Lmdb.S.Cursor.html#TYPEt">t</a> -><br>       ?flags:<a href="Lmdb.PutFlags.html#TYPEt">Lmdb.PutFlags.t</a> -> <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> <a href="Lmdb.S.html#TYPEelt">Lmdb.S.elt</a> -> unit</code></pre><div class="info ">
 <div class="info-desc">
 <p><code class="code">put&nbsp;cursor&nbsp;k&nbsp;v</code> adds <code class="code">k,v</code> to the database and move the cursor to
         its position.</p>
 </div>
 </div>
 
-<pre><span id="VALput_here"><span class="keyword">val</span> put_here</span> : <code class="type">?flags:<a href="Lmdb.PutFlags.html#TYPEt">Lmdb.PutFlags.t</a> -><br>       [< `Read | `Write > `Write ] <a href="Lmdb.S.Cursor.html#TYPEt">t</a> -><br>       <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> <a href="Lmdb.S.html#TYPEelt">Lmdb.S.elt</a> -> unit</code></pre><div class="info ">
+<pre><span id="VALput_here"><span class="keyword">val</span> put_here</span> : <code class="type">[< `Read | `Write > `Write ] <a href="Lmdb.S.Cursor.html#TYPEt">t</a> -><br>       ?flags:<a href="Lmdb.PutFlags.html#TYPEt">Lmdb.PutFlags.t</a> -> <a href="Lmdb.S.html#TYPEkey">Lmdb.S.key</a> -> <a href="Lmdb.S.html#TYPEelt">Lmdb.S.elt</a> -> unit</code></pre><div class="info ">
 <div class="info-desc">
 <p><code class="code">put_here&nbsp;cursor&nbsp;k&nbsp;v</code> adds <code class="code">k,v</code> at the current position.</p>
 </div>
@@ -80,7 +81,7 @@
 </ul>
 </div>
 
-<pre><span id="VALremove"><span class="keyword">val</span> remove</span> : <code class="type">?all:bool -> [< `Read | `Write > `Write ] <a href="Lmdb.S.Cursor.html#TYPEt">t</a> -> unit</code></pre><div class="info ">
+<pre><span id="VALremove"><span class="keyword">val</span> remove</span> : <code class="type">[< `Read | `Write > `Write ] <a href="Lmdb.S.Cursor.html#TYPEt">t</a> -> ?all:bool -> unit -> unit</code></pre><div class="info ">
 <div class="info-desc">
 <p><code class="code">remove&nbsp;cursor</code> removes the current binding.</p>
 

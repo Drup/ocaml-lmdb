@@ -11,7 +11,9 @@
 <link title="Index of values" rel=Appendix href="index_values.html">
 <link title="Index of modules" rel=Appendix href="index_modules.html">
 <link title="Index of module types" rel=Appendix href="index_module_types.html">
-<link title="Lmdb" rel="Chapter" href="Lmdb.html"><link title="Environments" rel="Section" href="#2_Environments">
+<link title="Lmdb" rel="Chapter" href="Lmdb.html"><link title="Capabilities" rel="Section" href="#2_Capabilities">
+<link title="Environments" rel="Section" href="#2_Environments">
+<link title="Transactions" rel="Section" href="#2_Transactions">
 <link title="Databases" rel="Section" href="#2_Databases">
 <link title="Error reporting" rel="Section" href="#2_Errorreporting">
 <link title="Databases with custom datatypes" rel="Section" href="#2_Databaseswithcustomdatatypes">
@@ -30,9 +32,9 @@
 <hr width="100%">
 <p>The <a href="https://symas.com/products/lightning-memory-mapped-database/#overview">LMDB</a> database is a fast in-file database that supports ACID transactions.</p>
 
-<p>These bindings attempts to expose a typesafe yet low-overhead API.</p>
+<p>These bindings attempt to expose a typesafe yet low-overhead API.</p>
 
-<p>First, an environment must be open using <a href="Lmdb.Env.html#VALcreate"><code class="code"><span class="constructor">Lmdb</span>.<span class="constructor">Env</span>.create</code></a>:</p>
+<p>First, an environment must be opened using <a href="Lmdb.Env.html#VALcreate"><code class="code"><span class="constructor">Lmdb</span>.<span class="constructor">Env</span>.create</code></a>:</p>
 
 <pre class="codepre"><code class="code"><span class="keyword">let</span> env = <span class="constructor">Env</span>.create <span class="string">"mydb"</span> </code></pre>
 <p>Database implementations are specialized both by keys and values and answer the <a href="Lmdb.S.html"><code class="code"><span class="constructor">Lmdb</span>.<span class="constructor">S</span></code></a> signature.
@@ -45,12 +47,22 @@
 <pre class="codepre"><code class="code"><span class="keyword">let</span> db = <span class="constructor">Db</span>.create ~create:<span class="keyword">true</span> env <span class="string">"Camelidae"</span> <span class="keyword">in</span>
 <span class="constructor">Db</span>.put db <span class="string">"Bactrian camel"</span> <span class="string">"Elegant and beautiful animal with two humps."</span>
     </code></pre>
-<p><a href="Lmdb.S.Txn.html">Transactions</a> and <a href="Lmdb.S.Cursor.html">Iterators</a> are also available.</p>
+<p><a href="Lmdb.Txn.html">Transactions</a> and <a href="Lmdb.S.Cursor.html">Iterators</a> are also available.</p>
 
 <p>You can define new database implementations using the <a href="Lmdb.Make.html"><code class="code"><span class="constructor">Lmdb</span>.<span class="constructor">Make</span></code></a> functor.</p>
-<h3 id="2_Environments">Environments</h3>
+<h3 id="2_Capabilities">Capabilities</h3>
+<pre><span id="TYPEcap"><span class="keyword">type</span> <code class="type">'a</code> cap</span> </pre>
+
+
+<pre><span id="VALro"><span class="keyword">val</span> ro</span> : <code class="type">[ `Read ] <a href="Lmdb.html#TYPEcap">cap</a></code></pre>
+<pre><span id="VALrw"><span class="keyword">val</span> rw</span> : <code class="type">[ `Read | `Write ] <a href="Lmdb.html#TYPEcap">cap</a></code></pre><h3 id="2_Environments">Environments</h3>
 <pre><span id="MODULEEnv"><span class="keyword">module</span> <a href="Lmdb.Env.html">Env</a></span>: <code class="code"><span class="keyword">sig</span></code> <a href="Lmdb.Env.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><div class="info">
 <p>Operations on environment.</p>
+
+</div>
+<h3 id="2_Transactions">Transactions</h3>
+<pre><span id="MODULETxn"><span class="keyword">module</span> <a href="Lmdb.Txn.html">Txn</a></span>: <code class="code"><span class="keyword">sig</span></code> <a href="Lmdb.Txn.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><div class="info">
+<p>A series of operations performed atomically.</p>
 
 </div>
 <h3 id="2_Databases">Databases</h3>
