@@ -26,8 +26,8 @@ module Make (C : Cstubs.Types.TYPE) = struct
   let mdb_txn_opt : mdb_txn option typ = ptr_opt (typedef void "MDB_txn")
 
   (* typedef unsigned int MDB_dbi; *)
-  type mdb_dbi = Unsigned.uint
-  let mdb_dbi : mdb_dbi typ = uint
+  type mdb_dbi = int
+  let mdb_dbi : mdb_dbi typ = uint_as_int
 
 
   type mdb_val

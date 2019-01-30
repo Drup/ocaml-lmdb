@@ -161,7 +161,7 @@ module Make (F: Cstubs.FOREIGN) = struct
 
   (* int mdb_dbi_open(MDB_txn *txn, const char *name, unsigned int flags, MDB_dbi *dbi); *)
   let mdb_dbi_open =
-    foreign "mdb_dbi_open" (mdb_txn @-> string @-> mdb_dbi_open_flag @-> ptr mdb_dbi @-> ret_error)
+    foreign "mdb_dbi_open" (mdb_txn @-> string_opt @-> mdb_dbi_open_flag @-> ptr mdb_dbi @-> ret_error)
 
   (* int mdb_stat(MDB_txn *txn, MDB_dbi dbi, MDB_stat *stat); *)
   let mdb_dbi_stat =

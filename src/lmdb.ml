@@ -252,31 +252,320 @@ module PutFlags = struct
   let _multiple    = mdb_MULTIPLE
 end
 
-module Flags = struct
-  type t = mdb_env_flag
-  let (+) = Unsigned.UInt.logor
-  let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
-  let eq f f' = Unsigned.UInt.(compare f f' = 0)
-  let none = Unsigned.UInt.zero
-  let reverse_key = mdb_REVERSEKEY
-  let dup_sort    = mdb_DUPSORT
-  let dup_fixed   = mdb_DUPFIXED
-  let integer_dup = mdb_INTEGERDUP
-  let reverse_dup = mdb_REVERSEDUP
-  let integer_key = mdb_INTEGERKEY
+module Bigstring = Bigstringaf
 
-  (* Not exported *)
-  let create     = mdb_CREATE
+  let dbval_of_bigstring b =
+    let mvp = addr (make mdb_val) in
+    alive_while b mvp; (* Make sure buffer will stay alive while mvp is in use. *)
+    (mvp |-> mv_size) <-@ Bigstring.length b ;
+    (mvp |-> mv_data) <-@ to_voidp @@ bigarray_start array1 b ; (* Reference to b is lost here! *)
+    (*Gc.full_major () ;*) (* trigger possible use-after-free. *)
+    mvp
+  let bigstring_of_dbval mvp =
+    (* no need to keep a reference to mvp here, because the memory the bigarray
+     * is mapped to is in the lmdb map and only valid as long as the transaction
+     * is alive. The user knows this. *)
+    bigarray_of_ptr array1
+      (!@ (mvp |-> mv_size))
+      Char
+      (!@ (mvp |-> mv_data) |> from_voidp char)
+
+module Map = struct
+
+  module Flags = struct
+    type t = mdb_env_flag
+    let (+) = Unsigned.UInt.logor
+    let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
+    let eq f f' = Unsigned.UInt.(compare f f' = 0)
+    let none = Unsigned.UInt.zero
+    let reverse_key = mdb_REVERSEKEY
+    let dup_sort    = mdb_DUPSORT
+    let dup_fixed   = mdb_DUPFIXED
+    let integer_dup = mdb_INTEGERDUP
+    let reverse_dup = mdb_REVERSEDUP
+    let integer_key = mdb_INTEGERKEY
+
+    (* Not exported *)
+    let create     = mdb_CREATE
+  end
+
+  type ('k, 'v, -'p) t =
+    { env : 'p Env.t
+    ; mutable dbi : mdb_dbi
+    ; flags : Flags.t
+    ; serialise_key : (int -> Bigstring.t) -> 'k -> Bigstring.t
+    ; deserialise_key : Bigstring.t -> 'k
+    ; serialise_val : (int -> Bigstring.t) -> 'v -> Bigstring.t
+    ; deserialise_val : Bigstring.t -> 'v
+    }
+
+  module Conv = struct
+    type bigstring = Bigstring.t
+
+    type 'a t =
+      ( ((int -> Bigstring.t) -> 'a -> Bigstring.t)
+      * (Bigstring.t -> 'a) )
+
+    let bigstring = (fun _ b -> b), (fun b -> b)
+
+    let string =
+      (fun alloc s ->
+         let len = String.length s in
+         let a = alloc len in
+         Bigstring.blit_from_string s ~src_off:0 a ~dst_off:0 ~len;
+         a),
+      (fun a -> Bigstring.substring a ~off:0 ~len:(Bigstring.length a))
+
+    let int32_be =
+      (fun alloc x ->
+         let a = alloc 4 in
+         Bigstring.set_int32_be a 0 Int32.(of_int x);
+         a),
+      (fun a -> Bigstring.get_int32_be a 0 |> Int32.to_int)
+    let int32_le =
+      (fun alloc x ->
+         let a = alloc 4 in
+         Bigstring.set_int32_le a 0 Int32.(of_int x);
+         a),
+      (fun a -> Bigstring.get_int32_le a 0 |> Int32.to_int)
+    let int64_be =
+      (fun alloc x ->
+         let a = alloc 8 in
+         Bigstring.set_int64_be a 0 Int64.(of_int x);
+         a),
+      (fun a -> Bigstring.get_int64_be a 0 |> Int64.to_int)
+    let int64_le =
+      (fun alloc x ->
+         let a = alloc 8 in
+         Bigstring.set_int64_le a 0 Int64.(of_int x);
+         a),
+      (fun a -> Bigstring.get_int64_le a 0 |> Int64.to_int)
+
+    let int32,int64 =
+      if Sys.big_endian
+      then int32_be, int64_be
+      else int32_le, int64_le
+
+    let int =
+      match (Sys.int_size + 7) / 8 * 8 with
+      | 32 -> int32
+      | 64 -> int64
+      | _ -> failwith "Lmdb: Unsupported integer size"
+  end
+
+  let invalid_dbi :mdb_dbi = -1
+
+  let write f v =
+    f Bigstring.create v
+
+  type 'cap create_mode =
+    | New : [> `Read | `Write ] create_mode
+    | Existing : [> `Read ] create_mode
+  let new_db = New
+  let existing_db = Existing
+
+  let create (type cap) (mode :cap create_mode)
+      ~conv_key: ((serialise_key, deserialise_key) as conv_key :'k Conv.t)
+      ~conv_val: ((serialise_val, deserialise_val) as conv_val :'v Conv.t)
+      ?(flags: Flags.t = Flags.none)
+      ?(txn: ([< `Read | `Write ] as 'p) Txn.t option)
+      ?(name: string option)
+      (env: 'p Env.t)
+    :('k ,'v , cap) t
+    =
+    let flags = Flags.( flags +
+        (* TODO: On sizeof(int) == 32 && sizeof(size_t) == 64 we might use
+         * integer_key / integer_dup on both, int32 and int64. *)
+        (if conv_key == Obj.magic Conv.int then integer_key else none) +
+        (if conv_val == Obj.magic Conv.int then integer_dup else none) )
+    in
+    let dbi = alloc mdb_dbi in
+    begin match mode with
+      | New ->
+        Txn.trivial rw env ?txn @@ fun txn ->
+        mdb_dbi_open txn name Flags.(flags + create) dbi
+      | Existing ->
+        Txn.trivial ro env ?txn @@ fun txn ->
+        mdb_dbi_open txn name flags dbi
+    end;
+    let db_t =
+      { env ; dbi = !@dbi ; flags
+      ; serialise_key; deserialise_key
+      ; serialise_val; deserialise_val }
+    in
+    Gc.finalise
+      (fun { env; dbi; _ } -> if dbi > invalid_dbi then mdb_dbi_close env dbi)
+      db_t;
+    db_t
+
+  let create_new  ~conv_key ~conv_val = create New  ~conv_key ~conv_val
+  let create_existing ~conv_key ~conv_val = create Existing ~conv_key ~conv_val
+
+  let stats ?txn { env ; dbi ; _ } =
+    let stats = make mdb_stat in
+    Txn.trivial ro ?txn env @@ fun txn ->
+    mdb_dbi_stat txn dbi (addr stats);
+    Env.make_stats stats
+
+  let _flags ?txn { env ; dbi ; _ } =
+    let flags = alloc mdb_dbi_open_flag in
+    Txn.trivial ro env ?txn @@ fun txn ->
+    mdb_dbi_flags txn dbi flags;
+    !@flags
+
+  let drop ?txn ?(delete=false) ({ dbi ; env ; _ } as map) =
+    if delete then map.dbi <- invalid_dbi;
+    Txn.trivial rw ?txn env @@ fun txn ->
+    mdb_drop txn dbi delete
+
+  let get map ?txn k =
+    let v = addr @@ make mdb_val in
+    Txn.trivial ro ?txn map.env (fun txn ->
+        mdb_get txn map.dbi (dbval_of_bigstring @@ write map.serialise_key k) v;
+        map.deserialise_val @@ bigstring_of_dbval v)
+
+  let put map ?txn ?(flags=PutFlags.none) k v =
+    Txn.trivial rw ?txn map.env (fun txn ->
+      mdb_put txn map.dbi
+        (dbval_of_bigstring @@ write map.serialise_key k)
+        (dbval_of_bigstring @@ write map.serialise_val v)
+        flags
+    )
+
+  let append map ?txn ?(flags=PutFlags.none) k v =
+    let flags =
+      if Flags.(test dup_sort map.flags)
+      then PutFlags.(flags + append_dup)
+      else PutFlags.(flags + append)
+    in
+    put map ?txn ~flags k v
+
+  let remove map ?txn ?v k =
+    Txn.trivial rw ?txn map.env (fun txn ->
+      match v with
+        | Some v ->
+          mdb_del txn map.dbi
+            (dbval_of_bigstring @@ write map.serialise_key k)
+            (dbval_of_bigstring @@ write map.serialise_val v)
+        | None ->
+          mdb_del txn map.dbi
+            (dbval_of_bigstring @@ write map.serialise_key k)
+            (from_voidp mdb_val null)
+    )
+
+  let compare_key map ?txn x y =
+    Txn.trivial ro ?txn map.env @@ fun txn ->
+    mdb_cmp txn map.dbi
+      (dbval_of_bigstring @@ write map.serialise_key x)
+      (dbval_of_bigstring @@ write map.serialise_key y)
+
+  let compare_elt map ?txn =
+    if not Flags.(test dup_sort map.flags) then
+      invalid_arg "Lmdb: elements are only comparable in a dup_sort map";
+    fun x y ->
+    Txn.trivial ro ?txn map.env @@ fun txn ->
+    mdb_dcmp txn map.dbi
+      (dbval_of_bigstring @@ write map.serialise_val x)
+      (dbval_of_bigstring @@ write map.serialise_val y)
+
+  let compare = compare_key
 end
 
-module Bigstring = Bigstringaf
-type buffer = Bigstring.t
+module Cursor = struct
+
+  type ('k, 'v, -'cap) t =
+    { cursor: mdb_cursor
+    ; map: ('k, 'v, 'cap) Map.t }
+
+  let go cap (map :_ Map.t) ?txn f =
+    let ptr_cursor = alloc mdb_cursor in
+    Txn.trivial cap map.env ?txn @@ fun txn ->
+    mdb_cursor_open txn map.dbi ptr_cursor ;
+    let cursor =
+      { cursor = !@ptr_cursor
+      ; map }
+    in
+    try
+      let res = f cursor in
+      mdb_cursor_close cursor.cursor ;
+      res
+    with exn -> mdb_cursor_close cursor.cursor ; raise exn
+
+  let write = Map.write
+
+  let put { cursor ; map } ?(flags=PutFlags.none) k v =
+    mdb_cursor_put cursor
+      (dbval_of_bigstring @@ write map.serialise_key k)
+      (dbval_of_bigstring @@ write map.serialise_val v)
+      flags
+
+  let put_here cursor ?(flags=PutFlags.none) k v =
+    put ~flags:PutFlags.(current + flags) cursor k v
+
+  let remove ?(all=false) { cursor ; map } =
+    let flag =
+      if all
+      then
+        if Map.Flags.(test dup_sort map.flags)
+        then PutFlags.no_dup_data
+        else raise @@ Invalid_argument (Printf.sprintf
+              "Lmdb.Cursor.del: Optional argument ~all unsuported: \
+               this database does not have the dupsort flag enabled.")
+      else PutFlags.none
+    in
+    mdb_cursor_del cursor flag
+
+  let get_prim op { cursor ; map } =
+    let k = addr @@ make mdb_val in
+    let v = addr @@ make mdb_val in
+    mdb_cursor_get cursor k v op ;
+    map.deserialise_key @@ bigstring_of_dbval k,
+    map.deserialise_val @@ bigstring_of_dbval v
+
+  let current cursor = get_prim MDB_GET_CURRENT cursor
+  let first cursor = get_prim MDB_FIRST cursor
+  let last cursor = get_prim MDB_LAST cursor
+  let next cursor = get_prim MDB_NEXT cursor
+  let prev cursor = get_prim MDB_PREV cursor
+
+  let seek_prim op { cursor ; map } k =
+    let v = addr @@ make mdb_val in
+    mdb_cursor_get cursor
+      (dbval_of_bigstring @@ write map.serialise_key k)
+      v op ;
+    map.deserialise_val @@ bigstring_of_dbval v
+
+  let seek cursor k = seek_prim MDB_SET cursor k
+  let get = seek
+  let seek_range cursor = seek_prim MDB_SET_RANGE cursor
+
+  let assert_dup s { map ; _ } =
+    if not Map.Flags.(test dup_sort map.flags)
+    then raise @@ Invalid_argument (Printf.sprintf
+          "Lmdb.Cursor.%s: Operation unsuported: this database does not have the \
+           dupsort flag enabled." s)
+
+  let first_dup c = assert_dup "first_dup" c; get_prim MDB_FIRST_DUP c
+  let last_dup c = assert_dup "last_dup" c; get_prim MDB_LAST_DUP c
+  let next_dup c = assert_dup "next_dup" c; get_prim MDB_NEXT_DUP c
+  let prev_dup c = assert_dup "prev_dup" c; get_prim MDB_PREV_DUP c
+
+  let seek_dup c = assert_dup "seek_dup" c; seek_prim MDB_GET_BOTH c
+  let seek_range_dup c = assert_dup "seek_range_dup" c; seek_prim MDB_GET_BOTH_RANGE c
+
+  (* The following two operations are not exposed, due to inherent unsafety:
+     - MDB_GET_MULTIPLE
+     - MDB_NEXT_MULTIPLE
+  *)
+
+end
+
 
 module Values = struct
 
-  module Flags = Flags
+  module Flags = Map.Flags
 
-  type db_val = buffer
+  type db_val = Bigstring.t
 
   module type S = sig
     type t
@@ -289,46 +578,14 @@ module Values = struct
     type t = int
     let default_flags = Flags.none
 
-    let write, read =
-      match Sys.big_endian, (Sys.int_size + 7) / 8 * 8 with
-      | true, 32 ->
-        (fun alloc x ->
-           let a = alloc 4 in
-           Bigstring.set_int32_be a 0 Int32.(of_int x);
-           a),
-        (fun a -> Bigstring.get_int32_be a 0 |> Int32.to_int)
-      | true, 64 ->
-        (fun alloc x ->
-           let a = alloc 8 in
-           Bigstring.set_int64_be a 0 Int64.(of_int x);
-           a),
-        (fun a -> Bigstring.get_int64_be a 0 |> Int64.to_int)
-      | false, 32 ->
-        (fun alloc x ->
-           let a = alloc 4 in
-           Bigstring.set_int32_le a 0 Int32.(of_int x);
-           a),
-        (fun a -> Bigstring.get_int32_le a 0 |> Int32.to_int)
-      | false, 64 ->
-        (fun alloc x ->
-           let a = alloc 8 in
-           Bigstring.set_int64_le a 0 Int64.(of_int x);
-           a),
-        (fun a -> Bigstring.get_int64_le a 0 |> Int64.to_int)
-      | _ -> failwith "Lmdb: Unsupported integer size"
+    let write, read = Map.Conv.int
   end
 
   module String : S with type t = string = struct
     type t = string
     let default_flags = Flags.none
 
-    let write, read =
-      (fun alloc s ->
-         let len = String.length s in
-         let a = alloc len in
-         Bigstring.blit_from_string s ~src_off:0 a ~dst_off:0 ~len;
-         a),
-      (fun a -> Bigstring.substring a ~off:0 ~len:(Bigstring.length a))
+    let write, read = Map.Conv.string
   end
 
 
@@ -350,6 +607,8 @@ end
 
 module Make (Key : Values.S) (Elt : Values.S) = struct
 
+  module Flags = Map.Flags
+
   let def_flags = Flags.(Key.default_flags + Elt.default_flags)
 
   let has_dup_flag = Flags.(test dup_sort) def_flags
@@ -359,38 +618,20 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
   type key = Key.t
   type elt = Elt.t
 
-  let dbval_of_buffer b =
-    let mvp = addr (make mdb_val) in
-    alive_while b mvp; (* Make sure buffer will stay alive while mvp is in use. *)
-    (mvp |-> mv_size) <-@ Bigstring.length b ;
-    (mvp |-> mv_data) <-@ to_voidp @@ bigarray_start array1 b ; (* Reference to b is lost here! *)
-    (*Gc.full_major () ;*) (* trigger possible use-after-free. *)
-    mvp
-  let buffer_of_dbval mvp =
-    (* no need to keep a reference to mvp here, because the memory the bigarray
-     * is mapped to is in the lmdb map and only valid as long as the transaction
-     * is alive. The user knows this. *)
-    bigarray_of_ptr array1
-      (!@ (mvp |-> mv_size))
-      Char
-      (!@ (mvp |-> mv_data) |> from_voidp char)
-
   let write f v =
     f Bigstring.create v
 
-  type 'cap create_mode =
-    | Create : [> `Read | `Write ] create_mode
-    | Open : _ create_mode
-  let create_db = Create
-  let open_db = Open
+  type 'cap create_mode = 'cap Map.create_mode
+  let new_db = Map.new_db
+  let existing_db = Map.existing_db
 
-  let create (type c) (mode :c create_mode) ?txn env name =
+  let create (type c) (mode :c create_mode) ?txn ?name env =
     let db = alloc mdb_dbi in
     begin match mode with
-      | Create ->
+      | Map.New ->
         Txn.trivial rw env ?txn @@ fun txn ->
         mdb_dbi_open txn name Flags.(create + def_flags) db
-      | Open ->
+      | Map.Existing ->
         Txn.trivial ro env ?txn @@ fun txn ->
         mdb_dbi_open txn name def_flags db
     end;
@@ -398,6 +639,9 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
        Slight memory leak, but nothing terrible. *)
     (* Gc.finalise mdb_dbi_close env !@db *)
     { env ; db = !@db }
+
+  let create_new = create Map.New
+  let create_existing = create Map.Existing
 
   let stats ?txn { env ; db } =
     let stats = make mdb_stat in
@@ -421,14 +665,14 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
   let get { db ; env } ?txn k =
     let v = addr @@ make mdb_val in
     Txn.trivial ro ?txn env (fun t ->
-        mdb_get t db (dbval_of_buffer @@ write Key.write k) v;
-        Elt.read @@ buffer_of_dbval v)
+        mdb_get t db (dbval_of_bigstring @@ write Key.write k) v;
+        Elt.read @@ bigstring_of_dbval v)
 
   let put { db ; env } ?txn ?(flags=PutFlags.none) k v =
     Txn.trivial rw ?txn env (fun t ->
       mdb_put t db
-        (dbval_of_buffer @@ write Key.write k)
-        (dbval_of_buffer @@ write Elt.write v)
+        (dbval_of_bigstring @@ write Key.write k)
+        (dbval_of_bigstring @@ write Elt.write v)
         flags
     )
 
@@ -445,19 +689,19 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       match elt with
         | Some v ->
           mdb_del t db
-            (dbval_of_buffer @@ write Key.write k)
-            (dbval_of_buffer @@ write Elt.write v)
+            (dbval_of_bigstring @@ write Key.write k)
+            (dbval_of_bigstring @@ write Elt.write v)
         | None ->
           mdb_del t db
-            (dbval_of_buffer @@ write Key.write k)
+            (dbval_of_bigstring @@ write Key.write k)
             (from_voidp mdb_val null)
     )
 
   let compare_key { db ; env } ?txn x y =
     Txn.trivial ro ?txn env @@ fun txn ->
     mdb_cmp txn db
-      (dbval_of_buffer @@ write Key.write x)
-      (dbval_of_buffer @@ write Key.write y)
+      (dbval_of_bigstring @@ write Key.write x)
+      (dbval_of_bigstring @@ write Key.write y)
 
   let compare_elt { db ; env } ?txn :elt -> elt -> int =
     if not has_dup_flag then
@@ -465,8 +709,8 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
     fun x y ->
     Txn.trivial ro ?txn env @@ fun txn ->
     mdb_dcmp txn db
-      (dbval_of_buffer @@ write Elt.write x)
-      (dbval_of_buffer @@ write Elt.write y)
+      (dbval_of_bigstring @@ write Elt.write x)
+      (dbval_of_bigstring @@ write Elt.write y)
 
   let compare = compare_key
 
@@ -487,8 +731,8 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
     let put cursor ?(flags=PutFlags.none) k v =
       mdb_cursor_put cursor
-        (dbval_of_buffer @@ write Key.write k)
-        (dbval_of_buffer @@ write Elt.write v)
+        (dbval_of_bigstring @@ write Key.write k)
+        (dbval_of_bigstring @@ write Elt.write v)
         flags
 
     let put_here cursor ?(flags=PutFlags.none) k v =
@@ -510,8 +754,8 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       let k = addr @@ make mdb_val in
       let v = addr @@ make mdb_val in
       mdb_cursor_get cursor k v op ;
-      Key.read @@ buffer_of_dbval k,
-      Elt.read @@ buffer_of_dbval v
+      Key.read @@ bigstring_of_dbval k,
+      Elt.read @@ bigstring_of_dbval v
 
     let current = get_prim MDB_GET_CURRENT
     let first = get_prim MDB_FIRST
@@ -522,9 +766,9 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
     let seek_prim op cursor k =
       let v = addr @@ make mdb_val in
       mdb_cursor_get cursor
-        (dbval_of_buffer @@ write Key.write k)
+        (dbval_of_bigstring @@ write Key.write k)
         v op ;
-      Elt.read @@ buffer_of_dbval v
+      Elt.read @@ bigstring_of_dbval v
 
     let seek = seek_prim MDB_SET
     let get = seek
@@ -564,11 +808,13 @@ module type S = sig
   type key
   type elt
 
-  type 'cap create_mode
-  val create_db : [> `Read | `Write ] create_mode
-  val open_db : [> `Read ] create_mode
+  type 'cap create_mode = 'cap Map.create_mode
+  val new_db : [> `Read | `Write ] create_mode
+  val existing_db : [> `Read ] create_mode
 
-  val create : 'cap create_mode -> ?txn:'cap Txn.t -> 'cap Env.t -> string -> 'cap t
+  val create : 'cap create_mode -> ?txn:'cap Txn.t -> ?name:string -> 'cap Env.t -> 'cap t
+  val create_new : ?txn:'cap Txn.t -> ?name:string -> ([> `Read | `Write ] as 'cap) Env.t -> 'cap t
+  val create_existing : ?txn:'cap Txn.t -> ?name:string -> ([> `Read ] as 'cap) Env.t -> 'cap t
   val get : [> `Read ] t -> ?txn:[> `Read] Txn.t -> key -> elt
   val put : [> `Read | `Write ] t -> ?txn:[> `Read] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
   val append : [> `Read | `Write ] t -> ?txn:[> `Read] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit

@@ -134,8 +134,8 @@ module Txn : sig
       Here is an example incrementing a value atomically:
       {[
 go rw env begin fun t ->
-let v = Db.get ~txn k in
-Db.put ~txn k (v+1) ;
+let v = Map.get ~txn k in
+Map.put ~txn k (v+1) ;
 v
 end
       ]}
@@ -170,6 +170,226 @@ module PutFlags : sig
   val no_dup_data : t
 end
 
+module Map : sig
+
+  (** A handle for an individual database. *)
+  type ('k, 'v, -'cap) t
+
+  module Flags : sig
+    type t
+    val ( + ) : t -> t -> t
+    val test : t -> t -> bool
+    val eq : t -> t -> bool
+    val none : t
+
+    val reverse_key : t
+    val dup_sort : t
+    val dup_fixed : t
+    val integer_dup : t
+    val reverse_dup : t
+    val integer_key : t
+  end
+
+  module Conv : sig
+    type bigstring =
+      (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+    type 'a t = ((int -> bigstring) -> 'a -> bigstring) * (bigstring -> 'a)
+
+    val int : int t
+    val int32_be : int t
+    val int32_le : int t
+    val int64_be : int t
+    val int64_le : int t
+    val string : string t
+    val bigstring : bigstring t
+  end
+
+  type 'cap create_mode
+  val new_db : [> `Read | `Write ] create_mode
+  val existing_db : [> `Read ] create_mode
+
+  (** [create env "foo"] open the database ["foo"] in the environment [env].
+
+      @param create if [true], the database will be created if it doesn't
+      exists. Invalid if [env] is read only.
+
+      @raise Not_found if the database doesn't exist. and [create] wasn't [true].
+  *)
+  val create : 'cap create_mode ->
+    conv_key: 'k Conv.t ->
+    conv_val: 'v Conv.t ->
+    ?flags:   Flags.t ->
+    ?txn:     'cap Txn.t ->
+    ?name:    string ->
+    'cap Env.t ->
+    ('k, 'v, 'cap) t
+
+  val create_new :
+    conv_key: 'k Conv.t ->
+    conv_val: 'v Conv.t ->
+    ?flags:   Flags.t ->
+    ?txn:     'cap Txn.t ->
+    ?name:    string ->
+    ([> `Read | `Write ] as 'cap) Env.t ->
+    ('k, 'v, 'cap) t
+
+  val create_existing :
+    conv_key: 'k Conv.t ->
+    conv_val: 'v Conv.t ->
+    ?flags:   Flags.t ->
+    ?txn:     'cap Txn.t ->
+    ?name:    string ->
+    ([> `Read ] as 'cap) Env.t ->
+    ('k, 'v, 'cap) t
+
+  (** [get map k] returns the value associated to [k].
+      @raise Not_found if the key is not in the database.
+  *)
+  val get : ('k, 'v, [> `Read ]) t -> ?txn:[> `Read ] Txn.t -> 'k -> 'v
+
+  (** [put map k v] associates the key [k] to the value [v] in the database [map].
+
+      @param flags Flags that allow to modify the behavior of [put].
+      @raise Exists if the key is already in the database and
+      [PutFlagse.no_overwrite] or [PutFlags.no_dup_data] was passed in [flags]
+      or if the [map] does not support [Values.Flags.dup_sort].
+  *)
+  val put : ('k, 'v, [> `Read | `Write ]) t -> ?txn:[> `Read | `Write ] Txn.t -> ?flags:PutFlags.t -> 'k -> 'v -> unit
+
+  (** [append map k v] like [put], but append [k, v] at the end of the database [map] without performing comparisons.
+
+      Should only be used to quickly add already-sorted data to the database.
+
+      @raise Error if a key is added that is smaller than the largest key already in the database.
+  *)
+  val append : ('k, 'v, [> `Read | `Write ]) t -> ?txn: [> `Read | `Write ] Txn.t -> ?flags:PutFlags.t -> 'k -> 'v -> unit
+
+  (** [remove map k] removes [k] from [map].
+
+      If the database accepts duplicates:
+      @param v only the specified binding is removed. Otherwise,
+      all the bindings with [k] are removed.
+
+      @raise Not_found if the key is not in the database.
+  *)
+  val remove : ('k, 'v, [> `Read | `Write ]) t -> ?txn:([> `Read | `Write ]) Txn.t -> ?v:'v -> 'k -> unit
+
+
+  (** {2 Misc} *)
+
+  val stats : ?txn: [> `Read ] Txn.t -> ('k, 'v, [> `Read ]) t -> Env.stats
+
+  (** [drop ?delete map] Empties [map].
+      @param delete If [true] [map] is also deleted from the environment
+      and the handle [map] invalidated. *)
+  val drop : ?txn: [> `Write ] Txn.t -> ?delete:bool -> ('k, 'v, [> `Write ]) t -> unit
+
+  (** [compare_key map ?txn a b]
+     Compares [a] and [b] as if they were keys in [map]. *)
+  val compare_key : ('k, 'v, 'cap) t -> ?txn:'cap' Txn.t -> 'k -> 'k -> int
+
+  (** [compare map ?txn a b] Same as [compare_key]. *)
+  val compare : ('k, 'v, 'cap) t -> ?txn:'cap' Txn.t -> 'k -> 'k -> int
+
+  (** [compare_elt map ?txn a b]
+     Compares [a] and [b] as if they were data elements in a [dup_sort] [map]. *)
+  val compare_elt : ('k, 'v, 'cap) t -> ?txn:'cap' Txn.t -> 'v -> 'v -> int
+end
+
+(** Manual iterators. *)
+module Cursor : sig
+
+  (** A cursor allows to iterate manually on the database.
+      A cursor may be read-only or read-write. *)
+  type ('k, 'v, -'cap) t
+
+  (** [go cap map ?txn f] makes a cursor in the transaction [txn] using the
+      function [f cursor].
+
+      The function [f] will receive the [cursor].
+      A cursor can only be created and used inside a transaction. The cursor
+      inherits the permissions of the transaction.
+      The cursor should not be leaked outside of [f].
+
+      Here is an example that returns the first 5 elements of a [map]:
+      {[
+go ro map begin fun c ->
+let h = first c in
+let rec aux i =
+  if i < 5 then next c :: aux (i+1)
+  else []
+in
+h :: aux 1
+end
+      ]}
+
+      @param txn if not provided, a transaction will implicitely be created
+      before calling [f] and be committed after [f] returns.
+  *)
+  val go : 'cap cap -> ('k, 'v, 'cap) Map.t -> ?txn:'cap Txn.t ->
+    (('k, 'v, 'cap) t -> 'a) -> 'a
+
+  (** [seek cursor k] moves the cursor to the key [k].
+      [get] is another name for [seek]. *)
+  val get : ('k, 'v, [> `Read ]) t -> 'k -> 'v
+
+  (** [put cursor k v] adds [k,v] to the database and move the cursor to
+      its position. *)
+  val put : ('k, 'v, [> `Read | `Write ]) t -> ?flags:PutFlags.t -> 'k -> 'v -> unit
+
+  (** [put_here cursor k v] adds [k,v] at the current position.
+
+      @raise Error if the key provided is not the current key.
+  *)
+  val put_here : ('k, 'v, [> `Read | `Write ]) t -> ?flags:PutFlags.t -> 'k -> 'v -> unit
+
+  (** [remove cursor] removes the current binding.
+
+      If the database allow duplicate keys and if [all] is [true], removes
+      all the bindings associated to the current key.
+  *)
+  val remove : ?all:bool -> ('k, 'v, [> `Read | `Write ]) t -> unit
+
+  (** [get cursor] returns the binding at the position of the cursor. *)
+  val current : ('k, 'v, [> `Read ]) t -> 'k * 'v
+
+  (** [first cursor] moves the cursor to the first binding. *)
+  val first : ('k, 'v, [> `Read ]) t -> 'k * 'v
+
+  (** [last cursor] moves the cursor to the last binding. *)
+  val last : ('k, 'v, [> `Read ]) t -> 'k * 'v
+
+  (** [next cursor] moves the cursor to the next binding. *)
+  val next : ('k, 'v, [> `Read ]) t -> 'k * 'v
+
+  (** [prev cursor] moves the cursor to the prev binding. *)
+  val prev : ('k, 'v, [> `Read ]) t -> 'k * 'v
+
+  (** [seek cursor k] moves the cursor to the key [k]. *)
+  val seek : ('k, 'v, [> `Read ]) t -> 'k -> 'v
+
+  (** [seek_range cursor k] moves the cursor to the first key
+      greater or equal to [k]. *)
+  val seek_range : ('k, 'v, [> `Read ]) t -> 'k -> 'v
+
+  (** {2 Operations on duplicated keys}
+
+      Similar to the previous operations, but only inside a set of binding
+      sharing the same key.
+
+      Raise {!Invalid_argument} if used on a
+      database that does not support duplicate keys.
+  *)
+
+  val first_dup : ('k, 'v, [> `Read ]) t -> 'k * 'v
+  val last_dup : ('k, 'v, [> `Read ]) t -> 'k * 'v
+  val next_dup : ('k, 'v, [> `Read ]) t -> 'k * 'v
+  val prev_dup : ('k, 'v, [> `Read ]) t -> 'k * 'v
+
+  val seek_dup : ('k, 'v, [> `Read ]) t -> 'k -> 'v
+  val seek_range_dup : ('k, 'v, [> `Read ]) t -> 'k -> 'v
+end
+
 (** Main signature for a database module. *)
 module type S = sig
 
@@ -182,9 +402,9 @@ module type S = sig
   (** The values of the database. *)
   type elt
 
-  type 'cap create_mode
-  val create_db : [> `Read | `Write ] create_mode
-  val open_db : [> `Read ] create_mode
+  type 'cap create_mode = 'cap Map.create_mode
+  val new_db : [> `Read | `Write ] create_mode
+  val existing_db : [> `Read ] create_mode
 
   (** [create env "foo"] open the database ["foo"] in the environment [env].
 
@@ -193,7 +413,9 @@ module type S = sig
 
       @raise Not_found if the database doesn't exist. and [create] wasn't [true].
   *)
-  val create : 'cap create_mode -> ?txn:'cap Txn.t -> 'cap Env.t -> string -> 'cap t
+  val create : 'cap create_mode -> ?txn:'cap Txn.t -> ?name:string -> 'cap Env.t -> 'cap t
+  val create_new : ?txn:'cap Txn.t -> ?name:string -> ([> `Read | `Write ] as 'cap) Env.t -> 'cap t
+  val create_existing : ?txn:'cap Txn.t -> ?name:string -> ([> `Read ] as 'cap) Env.t -> 'cap t
 
   (** [get db k] returns the value associated to [k].
       @raise Not_found if the key is not in the database.
@@ -368,23 +590,9 @@ val pp_error : Format.formatter -> error -> unit
 
 module Values : sig
 
-  module Flags : sig
-    type t
-    val ( + ) : t -> t -> t
-    val test : t -> t -> bool
-    val eq : t -> t -> bool
-    val none : t
+  module Flags : module type of Map.Flags
 
-    val reverse_key : t
-    val dup_sort : t
-    val dup_fixed : t
-    val integer_dup : t
-    val reverse_dup : t
-    val integer_key : t
-  end
-
-  type db_val =
-    (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+  type db_val = Map.Conv.bigstring
 
   module type S = sig
     type t
