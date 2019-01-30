@@ -48,7 +48,7 @@ let rw = Rw
 
 module Env = struct
 
-  type -'cap t = mdb_env
+  type -'cap t = mdb_env constraint 'cap = [< `Read | `Write ]
 
   (* exception Assert of (t * string) *)
 
@@ -175,7 +175,7 @@ end
 
 module Txn :
 sig
-  type -'cap t = mdb_txn
+  type -'cap t = mdb_txn constraint 'cap = [< `Read | `Write ]
 
   val go :
     'cap cap ->
@@ -196,7 +196,7 @@ sig
 end
 =
 struct
-  type -'cap t = mdb_txn
+  type -'cap t = mdb_txn constraint 'cap = [< `Read | `Write ]
 
   exception Abort of mdb_txn
 
@@ -298,6 +298,7 @@ module Map = struct
     ; serialise_val : (int -> Bigstring.t) -> 'v -> Bigstring.t
     ; deserialise_val : Bigstring.t -> 'v
     }
+    constraint 'cap = [< `Read | `Write ]
 
   module Conv = struct
     type bigstring = Bigstring.t
@@ -364,14 +365,14 @@ module Map = struct
   let new_db = New
   let existing_db = Existing
 
-  let create (type cap) (mode :cap create_mode)
+  let create (type cap) (mode :(cap as 'cap) create_mode)
       ~conv_key: ((serialise_key, deserialise_key) as conv_key :'k Conv.t)
       ~conv_val: ((serialise_val, deserialise_val) as conv_val :'v Conv.t)
       ?(flags: Flags.t = Flags.none)
-      ?(txn: ([< `Read | `Write ] as 'p) Txn.t option)
+      ?(txn: 'cap Txn.t option)
       ?(name: string option)
-      (env: 'p Env.t)
-    :('k ,'v , cap) t
+      (env: 'cap Env.t)
+    :('k ,'v , 'cap) t
     =
     let flags = Flags.( flags +
         (* TODO: On sizeof(int) == 32 && sizeof(size_t) == 64 we might use
@@ -476,6 +477,7 @@ module Cursor = struct
   type ('k, 'v, -'cap) t =
     { cursor: mdb_cursor
     ; map: ('k, 'v, 'cap) Map.t }
+    constraint 'cap = [< `Read | `Write ]
 
   let go cap (map :_ Map.t) ?txn f =
     let ptr_cursor = alloc mdb_cursor in
@@ -614,6 +616,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
   let has_dup_flag = Flags.(test dup_sort) def_flags
 
   type -'cap t = {env : 'cap Env.t ; db : mdb_dbi }
+    constraint 'cap = [< `Read | `Write ]
 
   type key = Key.t
   type elt = Elt.t
@@ -716,7 +719,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
   module Cursor = struct
 
-    type -'cap t = mdb_cursor
+    type -'cap t = mdb_cursor constraint 'cap = [< `Read | `Write ]
 
     let go rw db ?txn f =
       let ptr_cursor = alloc mdb_cursor in
@@ -803,7 +806,7 @@ module IntDb = Make (Values.Key.Int) (Values.Elt.String)
 
 module type S = sig
 
-  type -'cap t
+  type -'cap t constraint 'cap = [< `Read | `Write ]
 
   type key
   type elt
@@ -821,8 +824,8 @@ module type S = sig
   val remove : [> `Read | `Write ] t -> ?txn:[> `Read] Txn.t -> ?elt:elt -> key -> unit
 
   module Cursor : sig
-    type -'cap db
-    type -'cap t
+    type -'cap db constraint 'cap = [< `Read | `Write ]
+    type -'cap t constraint 'cap = [< `Read | `Write ]
 
     val go : 'cap cap -> 'cap db -> ?txn:'cap Txn.t -> ('cap t -> 'a) -> 'a
 

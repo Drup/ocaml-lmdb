@@ -38,7 +38,7 @@ module Env : sig
 
   (** A DB environment supports multiple databases,
       all residing in the same shared-memory map.*)
-  type -'cap t
+  type -'cap t constraint 'cap = [< `Read | `Write ]
 
   module Flags :  sig
     type t
@@ -116,7 +116,7 @@ end
 (** A series of operations performed atomically. *)
 module Txn : sig
   (** A transaction handle. A transaction may be read-only or read-write. *)
-  type -'cap t
+  type -'cap t constraint 'cap = [< `Read | `Write ]
 
   (** [go cap env ?txn f] makes a transaction in [env] with the capabilities [cap]
       and using the function [f txn].
@@ -172,8 +172,8 @@ end
 
 module Map : sig
 
-  (** A handle for an individual database. *)
-  type ('k, 'v, -'cap) t
+  (** A handle for an individual key-value map. *)
+  type ('k, 'v, -'cap) t constraint 'cap = [< `Read | `Write ]
 
   module Flags : sig
     type t
@@ -301,7 +301,7 @@ module Cursor : sig
 
   (** A cursor allows to iterate manually on the database.
       A cursor may be read-only or read-write. *)
-  type ('k, 'v, -'cap) t
+  type ('k, 'v, -'cap) t constraint 'cap = [< `Read | `Write ]
 
   (** [go cap map ?txn f] makes a cursor in the transaction [txn] using the
       function [f cursor].
@@ -394,7 +394,7 @@ end
 module type S = sig
 
   (** A handle for an individual database. *)
-  type -'cap t
+  type -'cap t constraint 'cap = [< `Read | `Write ]
 
   (** The key of the database. *)
   type key
@@ -452,11 +452,11 @@ module type S = sig
 
   (** Manual iterators. *)
   module Cursor : sig
-    type -'cap db
+    type -'cap db constraint 'cap = [< `Read | `Write ]
 
     (** A cursor allows to iterates manually on the database.
         A cursor may be read-only or read-write. *)
-    type -'cap t
+    type -'cap t constraint 'cap = [< `Read | `Write ]
 
     (** [go cap db ?txn f] makes a cursor in the transaction [txn] using the
        function [f cursor].
