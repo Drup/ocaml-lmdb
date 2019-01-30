@@ -261,8 +261,9 @@ end
     *)
     val go : 'cap cap -> 'cap db -> ?txn:'cap Txn.t -> ('cap t -> 'a) -> 'a
 
-    (** [get cursor] returns the binding at the position of the cursor. *)
-    val get : [> `Read ] t -> key * elt
+    (** [seek cursor k] moves the cursor to the key [k].
+        [get] is another name for [seek]. *)
+    val get : [> `Read ] t -> key -> elt
 
     (** [put cursor k v] adds [k,v] to the database and move the cursor to
         its position. *)
@@ -280,6 +281,9 @@ end
         all the bindings associated to the current key.
     *)
     val remove : [> `Read | `Write ] t -> ?all:bool -> unit -> unit
+
+    (** [get cursor] returns the binding at the position of the cursor. *)
+    val current : [> `Read ] t -> key * elt
 
     (** [first cursor] moves the cursor to the first binding. *)
     val first : [> `Read ] t -> key * elt

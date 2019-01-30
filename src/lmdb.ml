@@ -513,7 +513,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       Key.read @@ buffer_of_dbval k,
       Elt.read @@ buffer_of_dbval v
 
-    let get = get_prim MDB_GET_CURRENT
+    let current = get_prim MDB_GET_CURRENT
     let first = get_prim MDB_FIRST
     let last = get_prim MDB_LAST
     let next = get_prim MDB_NEXT
@@ -527,6 +527,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
       Elt.read @@ buffer_of_dbval v
 
     let seek = seek_prim MDB_SET
+    let get = seek
     let seek_range = seek_prim MDB_SET_RANGE
 
     let test_dup s f op cursor =
@@ -579,11 +580,12 @@ module type S = sig
 
     val go : 'cap cap -> 'cap db -> ?txn:'cap Txn.t -> ('cap t -> 'a) -> 'a
 
-    val get : [> `Read ] t -> key * elt
+    val get : [> `Read ] t -> key -> elt
     val put : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
     val put_here : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
     val remove : [> `Read | `Write ] t -> ?all:bool -> unit -> unit
 
+    val current : [> `Read ] t -> key * elt
     val first : [> `Read ]  t -> key * elt
     val last : [> `Read ] t -> key * elt
     val next : [> `Read ] t -> key * elt
