@@ -195,13 +195,12 @@ module Map : sig
     val bigstring : bigstring t
   end
 
+  (** [create env "foo"] open the map ["foo"] in the environment [env].
 
-  (** [create env "foo"] open the database ["foo"] in the environment [env].
-
-      @param create if [true], the database will be created if it doesn't
+      @param create if [true], the map will be created if it doesn't
       exists. Invalid if [env] is read only.
 
-      @raise Not_found if the database doesn't exist. and [create] wasn't [true].
+      @raise Not_found if the map doesn't exist. and [create] wasn't [true].
   *)
   val create : 'cap create_mode ->
     conv_key: 'k Conv.t ->
@@ -231,7 +230,7 @@ module Map : sig
     ('k, 'v, 'cap) t
 
   (** [get map k] returns the value associated to [k].
-      @raise Not_found if the key is not in the database.
+      @raise Not_found if the key is not in the map.
   *)
   val get : ('k, 'v, [> `Read ]) t -> ?txn:[> `Read ] Txn.t -> 'k -> 'v
 
@@ -250,27 +249,27 @@ module Map : sig
   (** [put map k v] associates the key [k] to the value [v] in [map].
 
       @param flags Flags that allow to modify the behavior of [put].
-      @raise Exists if the key is already in the database and
+      @raise Exists if the key is already in the map and
       [PutFlagse.no_overwrite] or [PutFlags.no_dup_data] was passed in [flags]
       or if the [map] does not support [Values.Flags.dup_sort].
   *)
   val put : ('k, 'v, [> `Read | `Write ]) t -> ?txn:[> `Read | `Write ] Txn.t -> ?flags:PutFlags.t -> 'k -> 'v -> unit
 
-  (** [append map k v] like [put], but append [k, v] at the end of the database [map] without performing comparisons.
+  (** [append map k v] like [put], but append [k, v] at the end of the [map] without performing comparisons.
 
-      Should only be used to quickly add already-sorted data to the database.
+      Should only be used to quickly add already-sorted data to the map.
 
-      @raise Error if a key is added that is smaller than the largest key already in the database.
+      @raise Error if a key is added that is smaller than the largest key already in the map.
   *)
   val append : ('k, 'v, [> `Read | `Write ]) t -> ?txn: [> `Read | `Write ] Txn.t -> ?flags:PutFlags.t -> 'k -> 'v -> unit
 
   (** [remove map k] removes [k] from [map].
 
-      If the database accepts duplicates:
+      If the map accepts duplicates:
       @param v only the specified binding is removed. Otherwise,
       all the bindings with [k] are removed.
 
-      @raise Not_found if the key is not in the database.
+      @raise Not_found if the key is not in the map.
   *)
   val remove : ('k, 'v, [> `Read | `Write ]) t -> ?txn:([> `Read | `Write ]) Txn.t -> ?v:'v -> 'k -> unit
 
@@ -299,7 +298,7 @@ end
 (** Manual iterators. *)
 module Cursor : sig
 
-  (** A cursor allows to iterate manually on the database.
+  (** A cursor allows to iterate manually on the map.
       A cursor may be read-only or read-write. *)
   type ('k, 'v, -'cap) t constraint 'cap = [< `Read | `Write ]
 
@@ -345,11 +344,17 @@ end
   *)
   val put_here : ('k, 'v, [> `Read | `Write ]) t -> ?flags:PutFlags.t -> 'k -> 'v -> unit
 
+  (** [append cursor k v] like [put], but append [k, v] at the end of the map without performing comparisons.
+
+      Should only be used to quickly add already-sorted data to the map.
+
+      @raise Error if a key is added that is smaller than the largest key already in the map.
+  *)
   val append : ('k, 'v, [> `Read | `Write ]) t -> ?flags:PutFlags.t -> 'k -> 'v -> unit
 
   (** [remove cursor] removes the current binding.
 
-      If the database allow duplicate keys and if [all] is [true], removes
+      If the map allow duplicate keys and if [all] is [true], removes
       all the bindings associated to the current key.
   *)
   val remove : ?all:bool -> ('k, 'v, [> `Read | `Write ]) t -> unit
@@ -382,7 +387,7 @@ end
       sharing the same key.
 
       Raise {!Invalid_argument} if used on a
-      database that does not support duplicate keys.
+      map that does not support duplicate keys.
   *)
 
   val first_dup : ('k, 'v, [> `Read ]) t -> 'v
