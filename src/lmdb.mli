@@ -177,6 +177,10 @@ module Map : sig
     val reverse_dup : t
   end
 
+  type 'cap create_mode
+  val new_db : [> `Read | `Write ] create_mode
+  val existing_db : [> `Read ] create_mode
+
   module Conv : sig
     type bigstring =
       (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
@@ -191,9 +195,6 @@ module Map : sig
     val bigstring : bigstring t
   end
 
-  type 'cap create_mode
-  val new_db : [> `Read | `Write ] create_mode
-  val existing_db : [> `Read ] create_mode
 
   (** [create env "foo"] open the database ["foo"] in the environment [env].
 
