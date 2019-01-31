@@ -52,13 +52,13 @@ let benchmark repeat =
     let n = 500 in
     throughputN ~repeat 1
       [ bench_functor "functor int" (module IntDb) (fun i -> i) string_of_int n
-      ; bench_functor "functor string" (module Db) string_of_int string_of_int n
+      (*; bench_functor "functor string" (module Db) string_of_int string_of_int n*)
       ; bench_poly "poly int" Map.Conv.int Map.Conv.string (fun i -> i) string_of_int n
-      ; bench_poly "poly string" Map.Conv.string Map.Conv.string string_of_int string_of_int n
+      (*; bench_poly "poly string" Map.Conv.string Map.Conv.string string_of_int string_of_int n
       ; bench_poly "poly int32_be" Map.Conv.int32_be Map.Conv.string (fun i -> i) string_of_int n
       ; bench_poly "poly int32_le" Map.Conv.int32_le Map.Conv.string (fun i -> i) string_of_int n
       ; bench_poly "poly int64_be" Map.Conv.int64_be Map.Conv.string (fun i -> i) string_of_int n
-      ; bench_poly "poly int64_le" Map.Conv.int64_le Map.Conv.string (fun i -> i) string_of_int n
+      ; bench_poly "poly int64_le" Map.Conv.int64_le Map.Conv.string (fun i -> i) string_of_int n*)
       ]
   in
   tabulate samples;
