@@ -361,11 +361,19 @@ module Map = struct
       (env: 'cap Env.t)
     :('k ,'v , 'cap) t
     =
-    let flags = Flags.( flags +
-        (* TODO: On sizeof(int) == 32 && sizeof(size_t) == 64 we might use
-         * integer_key / integer_dup on both, int32 and int64. *)
-        (if conv_key == Obj.magic Conv.int then integer_key else none) +
-        (if conv_val == Obj.magic Conv.int then integer_dup else none) )
+    let flags =
+      (* TODO: On sizeof(int) == 32 && sizeof(size_t) == 64 we might use
+       * integer_key / integer_dup on both, int32 and int64. *)
+      let is_native conv = conv == Obj.magic Conv.int in
+      let is_big conv = conv == Obj.magic Conv.int32_be ||
+                        conv == Obj.magic Conv.int64_be
+      in
+      let open Flags in
+      flags +
+      ( if is_native conv_key then integer_key
+        else if is_big conv_key then none else reverse_key ) +
+      ( if is_native conv_val then integer_dup
+        else if is_big conv_val then none else reverse_dup )
     in
     let dbi = alloc mdb_dbi in
     begin match mode with

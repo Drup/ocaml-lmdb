@@ -63,10 +63,8 @@ let test_map =
   [ "append", `Quick,
     begin fun () ->
       drop map;
-      Printf.eprintf "dropped";
       let rec loop n =
         if n < 1073741823 then begin
-          Printf.eprintf "appending %i\n%!" n;
           append map n (lnot n);
           loop (n / 3 * 4);
         end
@@ -123,10 +121,8 @@ let test_cursor =
     begin fun () ->
       Map.drop map;
       go rw map ?txn:None @@ fun cursor ->
-      Printf.eprintf "dropped";
       let rec loop n =
         if n < 1073741823 then begin
-          Printf.eprintf "appending %i\n%!" n;
           append cursor n (lnot n);
           loop (n / 3 * 4);
         end
@@ -148,45 +144,45 @@ let test_cursor =
       first cursor              |> check_kv "first" (0,0);
       check_raises "walk before first" Not_found
         (fun () -> prev cursor |> ignore);
-      next cursor               |> check_kv "next" (1,1);
-      seek cursor 5             |> check int "seek 5" 5;
-      prev cursor               |> check_kv "prev" (4,4);
-      current cursor            |> check_kv "current" (4,4);
+      next cursor               |> check_kv "next"      (1,1);
+      seek cursor 5             |> check int "seek 5"   5;
+      prev cursor               |> check_kv "prev"      (4,4);
+      current cursor            |> check_kv "current"   (4,4);
       remove cursor;
       current cursor            |> check_kv "shift after remove" (5,5);
-      next cursor               |> check_kv "next" (6,6);
+      next cursor               |> check_kv "next"      (6,6);
       (* XXX BUG in lmdb backend ? Behaviour wrongly documented ?
        * check_raises "Error" (Error 0)
         (fun () -> put_here cursor 400 4);*)
       (fun () -> put_here cursor 400 4) ();
       current cursor            |> check_kv "shift after put_here" (6,4);
       last cursor |> ignore;
-      check_raises "walk beyond last" Not_found
+      check_raises "fail when walking beyond last key" Not_found
         (fun () -> next cursor |> ignore);
     end
   ; "walk dup", `Quick,
     begin fun () ->
       go rw map ?txn:None @@ fun cursor ->
       for i=0 to 9 do put cursor 10 i done;
-      first_dup cursor          |> check int "first"     0;
-      next_dup cursor           |> check int "next"      1;
+      first_dup cursor          |> check int "first"    0;
+      next_dup cursor           |> check int "next"     1;
       seek_dup cursor 10 5      |> check_kv "seek 5"    (10,5);
       prev cursor               |> check_kv "prev"      (10,4);
       current cursor            |> check_kv "current"   (10,4);
       remove cursor;
-      current cursor            |> check_kv "shift after remove" (10,5);
-      first_dup cursor           |> check int "next"      0;
-      check_raises "walk before first dup" Not_found
+      current cursor            |> check_kv "cursor moved forward after remove" (10,5);
+      first_dup cursor           |> check int "first"   0;
+      check_raises "fail when walking before first dup" Not_found
         (fun () -> prev_dup cursor |> ignore);
-      last_dup cursor           |> check int "next"      9;
-      check_raises "walk beyond last dup" Not_found
+      last_dup cursor           |> check int "last"     9;
+      check_raises "fail when walking beyond last dup" Not_found
         (fun () -> next_dup cursor |> ignore);
-      seek_dup cursor 10 7      |> check_kv "next"      (10,7);
+      seek_dup cursor 10 7      |> check_kv "seek_dup"  (10,7);
       (* XXX BUG in lmdb backend ? Behaviour wrongly documented ?
        * check_raises "Error" (Error 0)
         (fun () -> put_here cursor 10 4);*)
       (fun () -> put_here cursor 10 4) ();
-      current cursor            |> check_kv "shift after put_here" (10,4);
+      current cursor            |> check_kv "cursor moved forward after remove" (10,4);
     end
   ; "put", `Quick,
     begin fun () ->
@@ -196,20 +192,48 @@ let test_cursor =
   ; "get", `Quick,
     begin fun () ->
       go rw map ?txn:None @@ fun cursor ->
-      check int "blub" (lnot 4285) (get cursor 4285)
+      check int "retrieve correct value for key" (lnot 4285) (get cursor 4285)
     end
   ; "Exists", `Quick,
     begin fun () ->
-      check_raises "Exists" Exists  @@ fun () ->
+      check_raises "failure when adding existing key" Exists  @@ fun () ->
       go rw map ?txn:None @@ fun cursor ->
       put cursor ~flags:PutFlags.no_overwrite 4285 0
     end
   ; "Not_found", `Quick,
     begin fun () ->
-      check_raises "Not_found" Not_found  @@ fun () ->
+      check_raises "failure on non-existing key" Not_found  @@ fun () ->
       go rw map ?txn:None @@ fun cursor ->
       get cursor 4287 |> ignore
     end
+  ]
+
+let test_int =
+  let open Map in
+  let make_test name conv =
+    name, `Quick,
+    begin fun () ->
+      let map =
+        (create new_db
+           ~conv_key:conv ~conv_val:conv
+           ~flags:Flags.(dup_sort)
+           ~name env)
+      in
+      let rec loop n =
+        if n < 1073741823 then begin
+          (try append map n n with Exists -> fail "Ordering on keys");
+          (try append map 1 n with Exists -> fail "Ordering on values");
+          loop (n / 3 * 4);
+        end
+      in loop 12;
+      drop ~delete:true map;
+    end
+  in
+  "Int",
+  [ make_test "int32_be" Conv.int32_be
+  ; make_test "int32_le" Conv.int32_le
+  ; make_test "int64_be" Conv.int64_be
+  ; make_test "int64_le" Conv.int64_le
   ]
 
 let () =
@@ -217,4 +241,5 @@ let () =
     [ "capabilities", [ "capabilities", `Quick, capabilities ]
     ; test_map
     ; test_cursor
+    ; test_int
     ]
