@@ -307,7 +307,9 @@ module Map = struct
       ( ((int -> Bigstring.t) -> 'a -> Bigstring.t)
       * (Bigstring.t -> 'a) )
 
-    let bigstring = (fun _ b -> b), (fun b -> b)
+    let bigstring =
+      (fun _ b -> b),
+      (fun b -> Bigstring.(copy ~off:0 ~len:(length b) b))
 
     let string =
       (fun alloc s ->
@@ -566,6 +568,14 @@ module Cursor = struct
   let put_here cursor ?(flags=PutFlags.none) k v =
     put ~flags:PutFlags.(current + flags) cursor k v
 
+  let append cursor ?(flags=PutFlags.none) k v =
+    let flags =
+      if Map.Flags.(test dup_sort cursor.map.flags)
+      then PutFlags.(flags + append_dup)
+      else PutFlags.(flags + append)
+    in
+    put cursor ~flags k v
+
   let remove ?(all=false) { cursor ; map } =
     let flag =
       if all
@@ -586,18 +596,30 @@ module Cursor = struct
     map.deserialise_key @@ bigstring_of_dbval k,
     map.deserialise_val @@ bigstring_of_dbval v
 
-  let current cursor = get_prim MDB_GET_CURRENT cursor
-  let first cursor = get_prim MDB_FIRST cursor
-  let last cursor = get_prim MDB_LAST cursor
-  let next cursor = get_prim MDB_NEXT cursor
-  let prev cursor = get_prim MDB_PREV cursor
-
   let seek_prim op { cursor ; map } k =
     let v = addr @@ make mdb_val in
     mdb_cursor_get cursor
       (dbval_of_bigstring @@ write map.serialise_key k)
       v op ;
     map.deserialise_val @@ bigstring_of_dbval v
+
+  let get_dup_prim op { cursor ; map } =
+    let v = addr @@ make mdb_val in
+    mdb_cursor_get cursor (from_voidp mdb_val null) v op ;
+    map.deserialise_val @@ bigstring_of_dbval v
+
+  let seek_dup_prim op { cursor ; map } k v =
+    let kptr = dbval_of_bigstring @@ write map.serialise_key k in
+    let vptr = dbval_of_bigstring @@ write map.serialise_val v in
+    mdb_cursor_get cursor kptr vptr op ;
+    map.deserialise_key @@ bigstring_of_dbval kptr,
+    map.deserialise_val @@ bigstring_of_dbval vptr
+
+  let current cursor = get_prim MDB_GET_CURRENT cursor
+  let first cursor = get_prim MDB_FIRST cursor
+  let last cursor = get_prim MDB_LAST cursor
+  let next cursor = get_prim MDB_NEXT cursor
+  let prev cursor = get_prim MDB_PREV cursor
 
   let seek cursor k = seek_prim MDB_SET cursor k
   let get = seek
@@ -609,13 +631,13 @@ module Cursor = struct
           "Lmdb.Cursor.%s: Operation unsuported: this database does not have the \
            dupsort flag enabled." s)
 
-  let first_dup c = assert_dup "first_dup" c; get_prim MDB_FIRST_DUP c
-  let last_dup c = assert_dup "last_dup" c; get_prim MDB_LAST_DUP c
-  let next_dup c = assert_dup "next_dup" c; get_prim MDB_NEXT_DUP c
-  let prev_dup c = assert_dup "prev_dup" c; get_prim MDB_PREV_DUP c
+  let first_dup c = assert_dup "first_dup" c; get_dup_prim MDB_FIRST_DUP c
+  let last_dup c = assert_dup "last_dup" c; get_dup_prim MDB_LAST_DUP c
+  let next_dup c = assert_dup "next_dup" c; get_dup_prim MDB_NEXT_DUP c
+  let prev_dup c = assert_dup "prev_dup" c; get_dup_prim MDB_PREV_DUP c
 
-  let seek_dup c = assert_dup "seek_dup" c; seek_prim MDB_GET_BOTH c
-  let seek_range_dup c = assert_dup "seek_range_dup" c; seek_prim MDB_GET_BOTH_RANGE c
+  let seek_dup c = assert_dup "seek_dup" c; seek_dup_prim MDB_GET_BOTH c
+  let seek_range_dup c = assert_dup "seek_range_dup" c; seek_dup_prim MDB_GET_BOTH_RANGE c
 
   (* The following two operations are not exposed, due to inherent unsafety:
      - MDB_GET_MULTIPLE

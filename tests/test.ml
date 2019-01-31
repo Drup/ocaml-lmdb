@@ -1,68 +1,42 @@
+open Alcotest
 open Lmdb
+
+let filename =
+  let rec tmp_filename base suffix n =
+    let name = Printf.sprintf "%s.%u%s" base n suffix in
+    if Sys.file_exists name;
+    then tmp_filename base suffix (n+1)
+    else name
+  in
+  tmp_filename "/tmp/lmdb_test" ".db" 0
 
 let env =
   Env.create rw
     ~flags:Env.Flags.(no_subdir + no_sync + no_lock + no_mem_init)
     ~map_size:104857600
     ~max_dbs:10
-    "/tmp/lmdb_test.db"
+    filename
 
-let benchmark repeat =
-  let errors = ref 0 in
+let () =
+  at_exit @@ fun () ->
+  Env.close env;
+  Sys.remove filename
 
-  let bench_functor
-      (type key elt)
-      name
-      (module Db : S with type key = key and type elt = elt) key value n =
-    let map_host = Db.(create new_db) env ~name in
-    let bench map cycles =
-      let open Db in
-      for i=0 to cycles-1 do
-        put map (key i) (value i)
-      done;
-      for i=0 to cycles-1 do
-        let v = get map (key i) in
-        if (v <> value i)
-        then incr errors;
-      done;
-      drop ~delete:false map;
-    in
-    name, bench map_host, n
-  in
+let map =
+  Map.(create new_db
+         ~conv_key:Conv.int32_be ~conv_val:Conv.int32_be
+         ~flags:Flags.(dup_sort)
+         ~name:"testmap" env)
 
-  let bench_poly name conv_key conv_val key value n =
-    let map_host = Map.(create new_db ~conv_key ~conv_val) env ~name in
-    let bench map cycles =
-      let open Map in
-      for i=0 to cycles-1 do
-        put map (key i) (value i)
-      done;
-      for i=0 to cycles-1 do
-        let v = get map (key i) in
-        if (v <> value i)
-        then incr errors;
-      done;
-      drop ~delete:false map;
-    in
-    name, bench map_host, n
-  in
-
-  let open Benchmark in
-  let samples =
-    let n = 500 in
-    throughputN ~repeat 1
-      [ bench_functor "functor int" (module IntDb) (fun i -> i) string_of_int n
-      ; bench_functor "functor string" (module Db) string_of_int string_of_int n
-      ; bench_poly "poly int" Map.Conv.int Map.Conv.string (fun i -> i) string_of_int n
-      ; bench_poly "poly string" Map.Conv.string Map.Conv.string string_of_int string_of_int n
-      ; bench_poly "poly int32_be" Map.Conv.int32_be Map.Conv.string (fun i -> i) string_of_int n
-      ; bench_poly "poly int32_le" Map.Conv.int32_le Map.Conv.string (fun i -> i) string_of_int n
-      ; bench_poly "poly int64_be" Map.Conv.int64_be Map.Conv.string (fun i -> i) string_of_int n
-      ; bench_poly "poly int64_le" Map.Conv.int64_le Map.Conv.string (fun i -> i) string_of_int n
-      ]
-  in
-  tabulate samples;
-  !errors
+let test_with_map f () =
+  Map.drop ~delete:false map;
+  try
+    f map;
+    Map.drop ~delete:false map;
+  with
+    e ->
+    Map.drop ~delete:false map;
+    raise e
 
 let[@warning "-26-27"] capabilities () =
   let env_rw = (env :> [ `Read | `Write ] Env.t) in
@@ -83,13 +57,164 @@ let[@warning "-26-27"] capabilities () =
   assert (Db.Cursor.seek cursor "4" = "IV");
 ;;
 
+let test_map =
+  "Map",
+  let open Map in
+  [ "append", `Quick,
+    begin fun () ->
+      drop map;
+      Printf.eprintf "dropped";
+      let rec loop n =
+        if n < 1073741823 then begin
+          Printf.eprintf "appending %i\n%!" n;
+          append map n (lnot n);
+          loop (n / 3 * 4);
+        end
+      in loop 12
+    end
+  ; "put", `Quick,
+    ( fun () -> put map 4285 (lnot 4285) )
+  ; "get", `Quick,
+    ( fun () -> check int "blub" (lnot 4285) (get map 4285) )
+  ; "Exists", `Quick,
+    begin fun () ->
+      check_raises "Exists" Exists  @@ fun () ->
+      put map ~flags:PutFlags.no_overwrite 4285 0
+    end
+  ; "remove", `Quick,
+    ( fun () -> remove map 4285 )
+  ; "Not_found", `Quick,
+    begin fun () ->
+      check_raises "Not_found" Not_found (fun () -> get map 4285 |> ignore)
+    end
+  ; "stress", `Slow,
+    begin fun () ->
+      let buf = String.make 1024 'X' in
+      let n = 10000 in
+      let map =
+        create new_db
+          ~conv_key:Conv.int32_be ~conv_val:Conv.string
+          ~name:"map2" env
+      in
+      for _i=1 to 100 do
+        for i=0 to n do
+          put map i buf;
+        done;
+        for i=0 to n do
+          let v =
+            try
+            get map i
+            with Not_found ->
+              failwith ("got Not_found for " ^ string_of_int i)
+          in
+          if (v <> buf)
+          then fail "memory corrupted ?"
+        done;
+        drop ~delete:false map
+      done
+    end
+  ]
+
+let test_cursor =
+  "Cursor",
+  let open Cursor in
+  let check_kv = check (pair int int) in
+  [ "append", `Quick,
+    begin fun () ->
+      Map.drop map;
+      go rw map ?txn:None @@ fun cursor ->
+      Printf.eprintf "dropped";
+      let rec loop n =
+        if n < 1073741823 then begin
+          Printf.eprintf "appending %i\n%!" n;
+          append cursor n (lnot n);
+          loop (n / 3 * 4);
+        end
+      in loop 12;
+    end
+  ; "first", `Quick,
+    begin fun () ->
+      go rw map ?txn:None @@ fun cursor ->
+      first cursor |> check_kv "first 12" (12, (lnot 12))
+    end
+  ; "put first", `Quick,
+    begin fun () ->
+      go rw map ?txn:None @@ fun cursor ->
+      for i=0 to 9 do put cursor i i done
+    end
+  ; "walk", `Quick,
+    begin fun () ->
+      go rw map ?txn:None @@ fun cursor ->
+      first cursor              |> check_kv "first" (0,0);
+      check_raises "walk before first" Not_found
+        (fun () -> prev cursor |> ignore);
+      next cursor               |> check_kv "next" (1,1);
+      seek cursor 5             |> check int "seek 5" 5;
+      prev cursor               |> check_kv "prev" (4,4);
+      current cursor            |> check_kv "current" (4,4);
+      remove cursor;
+      current cursor            |> check_kv "shift after remove" (5,5);
+      next cursor               |> check_kv "next" (6,6);
+      (* XXX BUG in lmdb backend ? Behaviour wrongly documented ?
+       * check_raises "Error" (Error 0)
+        (fun () -> put_here cursor 400 4);*)
+      (fun () -> put_here cursor 400 4) ();
+      current cursor            |> check_kv "shift after put_here" (6,4);
+      last cursor |> ignore;
+      check_raises "walk beyond last" Not_found
+        (fun () -> next cursor |> ignore);
+    end
+  ; "walk dup", `Quick,
+    begin fun () ->
+      go rw map ?txn:None @@ fun cursor ->
+      for i=0 to 9 do put cursor 10 i done;
+      first_dup cursor          |> check int "first"     0;
+      next_dup cursor           |> check int "next"      1;
+      seek_dup cursor 10 5      |> check_kv "seek 5"    (10,5);
+      prev cursor               |> check_kv "prev"      (10,4);
+      current cursor            |> check_kv "current"   (10,4);
+      remove cursor;
+      current cursor            |> check_kv "shift after remove" (10,5);
+      first_dup cursor           |> check int "next"      0;
+      check_raises "walk before first dup" Not_found
+        (fun () -> prev_dup cursor |> ignore);
+      last_dup cursor           |> check int "next"      9;
+      check_raises "walk beyond last dup" Not_found
+        (fun () -> next_dup cursor |> ignore);
+      seek_dup cursor 10 7      |> check_kv "next"      (10,7);
+      (* XXX BUG in lmdb backend ? Behaviour wrongly documented ?
+       * check_raises "Error" (Error 0)
+        (fun () -> put_here cursor 10 4);*)
+      (fun () -> put_here cursor 10 4) ();
+      current cursor            |> check_kv "shift after put_here" (10,4);
+    end
+  ; "put", `Quick,
+    begin fun () ->
+      go rw map ?txn:None @@ fun cursor ->
+      put cursor 4285 (lnot 4285)
+    end
+  ; "get", `Quick,
+    begin fun () ->
+      go rw map ?txn:None @@ fun cursor ->
+      check int "blub" (lnot 4285) (get cursor 4285)
+    end
+  ; "Exists", `Quick,
+    begin fun () ->
+      check_raises "Exists" Exists  @@ fun () ->
+      go rw map ?txn:None @@ fun cursor ->
+      put cursor ~flags:PutFlags.no_overwrite 4285 0
+    end
+  ; "Not_found", `Quick,
+    begin fun () ->
+      check_raises "Not_found" Not_found  @@ fun () ->
+      go rw map ?txn:None @@ fun cursor ->
+      get cursor 4287 |> ignore
+    end
+  ]
+
 let () =
-  let open Alcotest in
-  let benchmark () = check int "error count" 0 @@ benchmark 5 in
-  try
   run "Lmdb"
     [ "capabilities", [ "capabilities", `Quick, capabilities ]
-    ; "Benchmark", [ "Benchmark", `Slow, benchmark ]
-    ];
-  with
-  | e -> Env.close env; raise e
+    ; test_map
+    ; test_cursor
+    ]

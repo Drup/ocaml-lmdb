@@ -67,8 +67,17 @@ Executable "test"
 Test "test"
   Run$: flag(tests)
   TestTools: test
-  Command: env MALLOC_CHECK_=3 MALLOC_PERTURB_=195 $test
+  Command: env MALLOC_CHECK_=3 MALLOC_PERTURB_=195 $test -q
   WorkingDirectory: _build
+
+
+Executable "bench"
+  Path: tests
+  MainIs: bench.ml
+  Build$: flag(tests)
+  CompiledObject: best
+  Install: false
+  BuildDepends: lmdb, benchmark
 
 
 AlphaFeatures: ocamlbuild_more_args

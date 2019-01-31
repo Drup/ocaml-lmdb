@@ -187,7 +187,6 @@ module Map : sig
     val dup_fixed : t
     val integer_dup : t
     val reverse_dup : t
-    val integer_key : t
   end
 
   module Conv : sig
@@ -343,6 +342,8 @@ end
   *)
   val put_here : ('k, 'v, [> `Read | `Write ]) t -> ?flags:PutFlags.t -> 'k -> 'v -> unit
 
+  val append : ('k, 'v, [> `Read | `Write ]) t -> ?flags:PutFlags.t -> 'k -> 'v -> unit
+
   (** [remove cursor] removes the current binding.
 
       If the database allow duplicate keys and if [all] is [true], removes
@@ -381,13 +382,13 @@ end
       database that does not support duplicate keys.
   *)
 
-  val first_dup : ('k, 'v, [> `Read ]) t -> 'k * 'v
-  val last_dup : ('k, 'v, [> `Read ]) t -> 'k * 'v
-  val next_dup : ('k, 'v, [> `Read ]) t -> 'k * 'v
-  val prev_dup : ('k, 'v, [> `Read ]) t -> 'k * 'v
+  val first_dup : ('k, 'v, [> `Read ]) t -> 'v
+  val last_dup : ('k, 'v, [> `Read ]) t -> 'v
+  val next_dup : ('k, 'v, [> `Read ]) t -> 'v
+  val prev_dup : ('k, 'v, [> `Read ]) t -> 'v
 
-  val seek_dup : ('k, 'v, [> `Read ]) t -> 'k -> 'v
-  val seek_range_dup : ('k, 'v, [> `Read ]) t -> 'k -> 'v
+  val seek_dup : ('k, 'v, [> `Read ]) t -> 'k -> 'v -> ('k * 'v)
+  val seek_range_dup : ('k, 'v, [> `Read ]) t -> 'k -> 'v -> ('k * 'v)
 end
 
 (** Main signature for a database module. *)
