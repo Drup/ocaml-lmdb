@@ -237,21 +237,6 @@ struct
 end
 
 
-module PutFlags = struct
-  type t = mdb_put_flag
-  let (+) = Unsigned.UInt.logor
-  let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
-  let eq f f' = Unsigned.UInt.(compare f f' = 0)
-  let none = Unsigned.UInt.zero
-  let no_overwrite = mdb_NOOVERWRITE
-  let no_dup_data   = mdb_NODUPDATA
-  let current     = mdb_CURRENT
-  let reserve     = mdb_RESERVE
-  let append      = mdb_APPEND
-  let append_dup   = mdb_APPENDDUP
-  let _multiple    = mdb_MULTIPLE
-end
-
 module Bigstring = Bigstringaf
 
   let dbval_of_bigstring b =
@@ -427,6 +412,21 @@ module Map = struct
         mdb_get txn map.dbi (dbval_of_bigstring @@ write map.serialise_key k) v;
         map.deserialise_val @@ bigstring_of_dbval v)
 
+  module PutFlags = struct
+    type t = mdb_put_flag
+    let (+) = Unsigned.UInt.logor
+    let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
+    let eq f f' = Unsigned.UInt.(compare f f' = 0)
+    let none = Unsigned.UInt.zero
+    let no_overwrite = mdb_NOOVERWRITE
+    let no_dup_data   = mdb_NODUPDATA
+    let current     = mdb_CURRENT
+    let reserve     = mdb_RESERVE
+    let append      = mdb_APPEND
+    let append_dup   = mdb_APPENDDUP
+    let _multiple    = mdb_MULTIPLE
+  end
+
   let put map ?txn ?(flags=PutFlags.none) k v =
     if Flags.(test dup_sort map.flags)
     then begin
@@ -527,6 +527,8 @@ module Cursor = struct
     with exn -> mdb_cursor_close cursor.cursor ; raise exn
 
   let write = Map.write
+
+  module PutFlags = Map.PutFlags
 
   let put { cursor ; map } ?(flags=PutFlags.none) k v =
     if Map.Flags.(test dup_sort map.flags)
@@ -755,6 +757,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
         mdb_get t db (dbval_of_bigstring @@ write Key.write k) v;
         Elt.read @@ bigstring_of_dbval v)
 
+  module PutFlags = Map.PutFlags
   let put { db ; env } ?txn ?(flags=PutFlags.none) k v =
     if has_dup_flag
     then begin
@@ -846,6 +849,8 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
         mdb_cursor_close cursor ;
         res
       with exn -> mdb_cursor_close cursor ; raise exn
+
+    module PutFlags = Map.PutFlags
 
     let put cursor ?(flags=PutFlags.none) k v =
     if has_dup_flag
@@ -965,6 +970,16 @@ module type S = sig
   val create_new : ?txn:'cap Txn.t -> ?name:string -> ([> `Read | `Write ] as 'cap) Env.t -> 'cap t
   val create_existing : ?txn:'cap Txn.t -> ?name:string -> ([> `Read ] as 'cap) Env.t -> 'cap t
   val get : [> `Read ] t -> ?txn:[> `Read] Txn.t -> key -> elt
+  module PutFlags : sig
+    type t
+    val ( + ) : t -> t -> t
+    val test : t -> t -> bool
+    val eq : t -> t -> bool
+    val none : t
+
+    val no_overwrite : t
+    val no_dup_data : t
+  end
   val put : [> `Read | `Write ] t -> ?txn:[> `Read] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
   val append : [> `Read | `Write ] t -> ?txn:[> `Read] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
   val remove : [> `Read | `Write ] t -> ?txn:[> `Read] Txn.t -> ?elt:elt -> key -> unit
@@ -976,6 +991,16 @@ module type S = sig
     val go : 'cap cap -> 'cap db -> ?txn:'cap Txn.t -> ('cap t -> 'a) -> 'a
 
     val get : [> `Read ] t -> key -> elt
+    module PutFlags : sig
+      type t
+      val ( + ) : t -> t -> t
+      val test : t -> t -> bool
+      val eq : t -> t -> bool
+      val none : t
+
+      val no_overwrite : t
+      val no_dup_data : t
+    end
     val put : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
     val put_here : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
     val remove : [> `Read | `Write ] t -> ?all:bool -> unit -> unit

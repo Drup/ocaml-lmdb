@@ -158,18 +158,6 @@ end
 
 (** {2 Databases} *)
 
-(** Flags usable with the [put] operation. *)
-module PutFlags : sig
-  type t
-  val ( + ) : t -> t -> t
-  val test : t -> t -> bool
-  val eq : t -> t -> bool
-  val none : t
-
-  val no_overwrite : t
-  val no_dup_data : t
-end
-
 module Map : sig
 
   (** A handle for an individual key-value map. *)
@@ -246,7 +234,19 @@ module Map : sig
   *)
   val get : ('k, 'v, [> `Read ]) t -> ?txn:[> `Read ] Txn.t -> 'k -> 'v
 
-  (** [put map k v] associates the key [k] to the value [v] in the database [map].
+  (** Flags usable with the [put] operation. *)
+  module PutFlags : sig
+    type t
+    val ( + ) : t -> t -> t
+    val test : t -> t -> bool
+    val eq : t -> t -> bool
+    val none : t
+
+    val no_overwrite : t
+    val no_dup_data : t
+  end
+
+  (** [put map k v] associates the key [k] to the value [v] in [map].
 
       @param flags Flags that allow to modify the behavior of [put].
       @raise Exists if the key is already in the database and
@@ -332,7 +332,9 @@ end
       [get] is another name for [seek]. *)
   val get : ('k, 'v, [> `Read ]) t -> 'k -> 'v
 
-  (** [put cursor k v] adds [k,v] to the database and move the cursor to
+  module PutFlags : module type of Map.PutFlags
+
+  (** [put cursor k v] adds [k,v] to the map and move the cursor to
       its position. *)
   val put : ('k, 'v, [> `Read | `Write ]) t -> ?flags:PutFlags.t -> 'k -> 'v -> unit
 
@@ -423,6 +425,8 @@ module type S = sig
   *)
   val get : [> `Read ] t -> ?txn:[> `Read ] Txn.t -> key -> elt
 
+  module PutFlags : module type of Map.PutFlags
+
   (** [put db k v] associates the key [k] to the value [v] in the database [db].
 
       @param flags Flags that allow to modify the behavior of [put].
@@ -487,6 +491,8 @@ end
     (** [seek cursor k] moves the cursor to the key [k].
         [get] is another name for [seek]. *)
     val get : [> `Read ] t -> key -> elt
+
+    module PutFlags : module type of Map.PutFlags
 
     (** [put cursor k v] adds [k,v] to the database and move the cursor to
         its position. *)
