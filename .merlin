@@ -8,4 +8,5 @@ PKG ctypes
 PKG ctypes.stubs
 PKG ctypes.foreign
 PKG unix-type-representations
+PKG alcotest
 PKG benchmark
