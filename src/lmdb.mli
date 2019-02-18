@@ -29,11 +29,15 @@ Db.put db "Bactrian camel" "Elegant and beautiful animal with two humps."
 
 module Mdb :module type of Lmdb_bindings
 
-(** {2 Capabilities} *)
+(** {2 Permissions} *)
 
-type 'a cap
-val ro : [ `Read ] cap
-val rw : [ `Read | `Write ] cap
+type 'a perm constraint 'a = [< `Read | `Write ]
+
+(** Request read-only access. *)
+val ro : [ `Read ] perm
+
+(** Request read-write access. *)
+val rw : [ `Read | `Write ] perm
 
 (** {2 Environments} *)
 
@@ -42,7 +46,7 @@ module Env : sig
 
   (** A DB environment supports multiple databases,
       all residing in the same shared-memory map.*)
-  type t
+  type -'perm t constraint 'perm = [< `Read | `Write ]
 
   module Flags :  sig
     type t
@@ -73,81 +77,83 @@ module Env : sig
       @param max_dbs Maximum number of named databases.
       @param mode The UNIX permissions to set on created files and semaphores. Default is [0o755].
   *)
-  val create :
+  val create : 'perm perm ->
     ?max_readers:int -> ?map_size:int -> ?max_dbs:int ->
-    ?flags:Flags.t -> ?mode:int -> string -> t
+    ?flags:Flags.t -> ?mode:int -> string -> 'perm t
 
-  val close : t -> unit
 
-  val copy : ?compact:bool -> t -> string -> unit
 
-  val copyfd : ?compact:bool -> t -> Unix.file_descr -> unit
+  val close : [> `Read ] t -> unit
 
-  val set_flags : t -> Flags.t -> bool -> unit
+  val copy : ?compact:bool -> [> `Read ] t -> string -> unit
 
-  val flags : t -> Flags.t
+  val copyfd : ?compact:bool -> [> `Read ] t -> Unix.file_descr -> unit
 
-  val set_map_size : t -> int -> unit
+  val set_flags : 'perm t -> Flags.t -> bool -> unit
 
-  val path : t -> string
+  val flags : 'perm t -> Flags.t
 
-  val fd : t -> Unix.file_descr
+  val set_map_size : [> `Write ] t -> int -> unit
 
-  val sync : ?force:bool -> t -> unit
+  val path : 'perm t -> string
 
-  val stats : t -> Mdb.stats
+  val sync : ?force:bool -> [> `Read ] t -> unit
+  val fd : 'perm t -> Unix.file_descr
 
-  val max_readers : t -> int
+  val stats : [> `Read ] t -> Mdb.stats
 
-  val max_keysize : t -> int
+  val max_readers : 'perm t -> int
 
-  val reader_list : t -> string list
+  val max_keysize : 'perm t -> int
 
-  val reader_check : t -> int
+  val reader_list : 'perm t -> string list
+
+  val reader_check : 'perm t -> int
 
 end
 
-(** {2 Transactions} *)
-
-(** A series of operations performed atomically. *)
+(** Series of operations on an environment performed atomically. *)
 module Txn : sig
   (** A transaction handle. A transaction may be read-only or read-write. *)
-  type -'a t constraint 'a = [< `Read | `Write ]
+  type -'perm t constraint 'perm = [< `Read | `Write ]
 
-  (** [go cap env ?txn f] makes a transaction in [env] with the capabilities [cap]
-      and using the function [f txn].
+  (** [go perm env ?txn f]
+      runs a transaction with [perm] read/write permissions in [env].
 
-      The function [f] will receive the transaction handle [txn].
-      All changes to the environment [env] done using the transaction handle [txn]
-      will be persisted to the environment when [f] returns.
-      After [f] returned, the transaction handle is invalid and should
-      therefore not be leaked outside [f].
+      The function [f txn] will receive the transaction handle. All changes to
+      the environment [env] done using the transaction handle will be persisted
+      to the environment only when [f] returns. After [f] returned, the
+      transaction handle is invalid and should therefore not be leaked outside
+      [f].
 
       @return [None] if the transaction was aborted with [abort], and [Some _] otherwise.
       @param txn Create a child transaction to [txn].
+      This is not supported on an [env] with {!Env.Flags.write_map}.
 
       Here is an example incrementing a value atomically:
-      {[
-go rw env begin fun t ->
-let v = Db.get ~txn k in
-Db.put ~txn k (v+1) ;
-v
+{[
+go rw env begin fun txn ->
+  let v = Db.get ~txn k in
+  Db.put ~txn k (v+1) ;
+  v
 end
-      ]}
+]}
   *)
   val go :
-    'a cap ->
-    ?txn:([< `Read | `Write ] as 'a) t ->
-    Env.t ->
-    ('a t -> 'b) -> 'b option
-
-  (** [abort txn] will abort the transaction. *)
-  val abort : 'a t -> 'b
+    'perm perm ->
+    ?txn:'perm t ->
+    'perm Env.t ->
+    ('perm t -> 'a) -> 'a option
 
 
-  (** {2 Misc} *)
 
-  val env : 'a t -> Env.t
+  (** [abort txn] aborts transaction [txn] and the current [go] function,
+      which will return [None].
+  *)
+  val abort : 'perm t -> 'b
+
+  val env : 'perm t -> 'perm Env.t
+  (** [env txn] return the environment of [txn] *)
 
 end
 
@@ -169,7 +175,7 @@ end
 module type S = sig
 
   (** A handle for an individual database. *)
-  type t
+  type -'perm t constraint 'perm = [< `Read | `Write ]
 
   (** The key of the database. *)
   type key
@@ -184,12 +190,12 @@ module type S = sig
 
       @raise Not_found if the database doesn't exist. and [create] wasn't [true].
   *)
-  val create : ?create:bool -> Env.t -> string -> t
+  val create : ?create:bool -> ([ `Read | `Write ] as 'perm) Env.t -> string -> 'perm t
 
   (** [get db k] returns the value associated to [k].
       @raise Not_found if the key is not in the database.
   *)
-  val get : t -> ?txn:[> `Read ] Txn.t -> key -> elt
+  val get : [> `Read ] t -> ?txn:[> `Read ] Txn.t -> key -> elt
 
   (** [put db k v] associates the key [k] to the value [v] in the database [db].
 
@@ -198,7 +204,7 @@ module type S = sig
       [PutFlagse.no_overwrite] or [PutFlags.no_dup_data] was passed in [flags]
       or if the [db] does not support [Values.Flags.dup_sort].
   *)
-  val put : t -> ?txn:([> `Read | `Write ]) Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
+  val put : [> `Read | `Write ] t -> ?txn:([> `Read | `Write ]) Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
 
   (** [append db k v] like [put], but append [k, v] at the end of the database [db] without performing comparisons.
 
@@ -206,7 +212,7 @@ module type S = sig
 
       @raise Error if a key is added that is smaller than the largest key already in the database.
   *)
-  val append : t -> ?txn:([> `Read | `Write ]) Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
+  val append : [> `Read | `Write ] t -> ?txn:([> `Read | `Write ]) Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
 
   (** [remove db k] removes [k] from [db].
 
@@ -216,16 +222,16 @@ module type S = sig
 
       @raise Not_found if the key is not in the database.
   *)
-  val remove : t -> ?txn:([> `Read | `Write ]) Txn.t -> ?elt:elt -> key -> unit
+  val remove : [> `Read | `Write ] t -> ?txn:([> `Read | `Write ]) Txn.t -> ?elt:elt -> key -> unit
 
 
   (** Manual iterators. *)
   module Cursor : sig
-    type db
+    type 'perm db constraint 'perm = [< `Read | `Write ]
 
     (** A cursor allows to iterates manually on the database.
         A cursor may be read-only or read-write. *)
-    type -'a t constraint 'a = [< `Read | `Write ]
+    type -'perm t constraint 'perm = [< `Read | `Write ]
 
     (** [go cap db ?txn f] makes a cursor in the transaction [txn] using the
        function [f cursor].
@@ -250,7 +256,7 @@ end
         @param txn if not provided, a transaction will implicitely be created
         and committed after [f] returns.
     *)
-    val go : 'c cap -> ?txn:'c Txn.t -> db -> ('c t -> 'a) -> 'a
+    val go : 'perm perm -> ?txn:'perm Txn.t -> 'perm db -> ('perm t -> 'a) -> 'a
 
     (** [get cursor] returns the binding at the position of the cursor. *)
     val get : [> `Read ] t -> key * elt
@@ -307,27 +313,27 @@ end
 
     val seek_dup : [> `Read ] t -> key -> elt
     val seek_range_dup : [> `Read ] t -> key -> elt
-  end with type db := t
+  end with type -'perm db := 'perm t
 
   (** {2 Misc} *)
 
-  val stats : t -> Mdb.stats
+  val stats : [> `Read ] t -> Mdb.stats
 
   (** [drop ?delete db] Empties [db].
       @param delete If [true] [db] is also deleted from the environment
       and the handle [db] invalidated. *)
-  val drop : ?delete:bool -> t -> unit
+  val drop : ?delete:bool -> [> `Read | `Write ] t -> unit
 
   (** [compare_key db ?txn a b]
      Compares [a] and [b] as if they were keys in [db]. *)
-  val compare_key : t -> ?txn:[> `Read ] Txn.t -> key -> key -> int
+  val compare_key : [> `Read ] t -> ?txn:[> `Read ] Txn.t -> key -> key -> int
 
   (** [compare db ?txn a b] Same as [compare_key]. *)
-  val compare : t -> ?txn:[> `Read ] Txn.t -> key -> key -> int
+  val compare : [> `Read ] t -> ?txn:[> `Read ] Txn.t -> key -> key -> int
 
   (** [compare_elt db ?txn a b]
      Compares [a] and [b] as if they were data elements in a [dup_sort] [db]. *)
-  val compare_elt : t -> ?txn:[> `Read ] Txn.t -> elt -> elt -> int
+  val compare_elt : [> `Read ] t -> ?txn:[> `Read ] Txn.t -> elt -> elt -> int
 end
 
 (** Database with string keys and string elements. *)
@@ -338,15 +344,12 @@ module IntDb : S with type key = int and type elt = string
 
 (** {2 Error reporting} *)
 
-type error = int
-(** Error return code. See Lmdb's documentation for details. *)
-
 exception Exists
 exception Not_found
-exception Error of error
+exception Error of int
 (** Errors are reported with those exceptions. *)
 
-val pp_error : Format.formatter -> error -> unit
+val pp_error : Format.formatter -> int -> unit
 (** [pp_error Format.std_formatter e] will print a human-readable description
     of the given error.
 *)

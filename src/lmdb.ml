@@ -1,32 +1,36 @@
 module Mdb = Lmdb_bindings
 module Bigstring = Bigstringaf
 
-let version = Mdb.version
-
 exception Not_found = Not_found
 exception Exists = Mdb.Exists
 exception Error = Mdb.Error
 
-type error = int
+type 'a perm = Ro | Rw constraint 'a = [< `Read | `Write ]
+let ro :[ `Read ] perm = Ro
+let rw :[ `Read | `Write ] perm = Rw
+
+let version = Mdb.version
 
 let pp_error fmt i =
   Format.fprintf fmt "%s@." (Mdb.strerror i)
 
-type 'a cap =
-  | Ro : [ `Read ] cap
-  | Rw : [ `Read | `Write ] cap
-let ro = Ro
-let rw = Rw
-
 module Env = struct
 
-  type t = [> `Read | `Write ] Mdb.env
+  type -'perm t = 'perm Mdb.env constraint 'perm = [< `Read | `Write ]
 
   (* exception Assert of (t * string) *)
 
   module Flags = Mdb.EnvFlags
 
-  let create ?max_readers ?map_size ?max_dbs ?(flags=Flags.none) ?(mode=0o755) path =
+  let create (perm :'perm perm)
+      ?max_readers ?map_size ?max_dbs
+      ?(flags=Flags.none) ?(mode=0o755)
+      path =
+    let flags =
+      match perm with
+      | Rw -> flags
+      | Ro -> Flags.(flags + read_only)
+    in
     let env = Mdb.env_create () in
     try
       let opt_iter f = function
@@ -57,6 +61,7 @@ module Env = struct
   let set_map_size = Mdb.env_set_mapsize
 
   let path = Mdb.env_get_path
+
   let sync ?(force=false) env = Mdb.env_sync env force
 
   let fd = Mdb.env_get_fd
@@ -80,21 +85,22 @@ sig
   type -'perm t = 'perm Mdb.txn constraint 'perm = [< `Read | `Write ]
 
   val go :
-    'perm cap ->
-    ?txn:([< `Read | `Write ] as 'perm) t ->
-    Env.t ->
-    ('perm t -> 'b) -> 'b option
+    'perm perm ->
+    ?txn:'perm t ->
+    'perm Env.t ->
+    ('perm t -> 'a) -> 'a option
 
-  val abort : 'a t -> 'b
 
-  val env : 'a t -> Env.t
+  val abort : _ t -> 'b
+
+  val env : 'perm t -> 'perm Env.t
 
   (* not exported: *)
   val trivial :
-    'a cap ->
-    ?txn:'a t ->
-    Env.t ->
-    ('a t -> 'b) -> 'b
+    'perm perm ->
+    ?txn:'perm t ->
+    'perm Env.t ->
+    ('perm t -> 'a) -> 'a
 end
 =
 struct
@@ -102,28 +108,16 @@ struct
 
   exception Abort of Obj.t
 
-  let env txn = Obj.magic @@ Mdb.txn_env txn
+  let env = Mdb.txn_env
 
   let abort txn = raise (Abort (Obj.repr txn))
-
-  let go :
-    'perm cap ->
-    ?txn:([< `Read | `Write ] as 'perm) t ->
-    Env.t ->
-    ('perm t -> 'b) -> 'b option
-    =
-    fun (type c) (rw :c cap) ?txn:parent env f ->
-    let txn_flag =
-      match rw with
-      | Ro -> Env.Flags.read_only
+  let go perm ?txn:parent env f =
+    let flags =
+      match perm with
       | Rw -> Env.Flags.none
+      | Ro -> Env.Flags.read_only
     in
-    let txn =
-      Mdb.txn_begin
-        (env : Env.t :> [< `Read | `Write ] Mdb.env)
-        (parent :> [< `Read | `Write ] t option)
-        txn_flag
-    in
+    let txn = Mdb.txn_begin env parent flags in
     try
       let x = f txn in
       Mdb.txn_commit txn ; Some x
@@ -133,17 +127,11 @@ struct
       | exn -> Mdb.txn_abort txn ; raise exn
 
   (* Used internally for trivial functions, not exported. *)
-  let trivial :
-    'a cap ->
-    ?txn:'a t ->
-    Env.t ->
-    ('a t -> 'b) -> 'b
-    =
-    fun rw ?txn e f ->
+  let trivial perm ?txn env f =
     match txn with
     | Some txn -> f txn
     | None ->
-      match go rw e f with
+      match go perm env f with
       | None -> assert false
       | Some x -> x
 end
@@ -237,7 +225,8 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
   let has_dup_flag = Flags.(test dup_sort) def_flags
 
-  type t = {env : Env.t ; db : Mdb.dbi }
+  type -'perm t = {env : 'perm Env.t ; db : Mdb.dbi }
+    constraint 'perm = [< `Read | `Write ]
 
   type key = Key.t
   type elt = Elt.t
@@ -254,8 +243,8 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
     let f txn = Mdb.dbi_open txn (Some name) flags in
     let dbi =
       if create
-      then Txn.trivial rw env f
-      else Txn.trivial ro env f
+      then Txn.trivial rw (env :> [ `Read | `Write ] Env.t) f
+      else Txn.trivial ro (env :> [ `Read ] Env.t) f
     in
     (* We do not put a finaliser here, as it would break with Mdb.drop.
        Slight memory leak, but nothing terrible. *)
@@ -263,7 +252,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
     { env ; db = dbi }
 
   let stats { env ; db } =
-    Txn.trivial ro env (fun t ->
+    Txn.trivial ro (env :> [ `Read ] Env.t) (fun t ->
       Mdb.dbi_stat t db
     )
 
@@ -280,7 +269,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
   let get { db ; env } ?txn k =
     Txn.trivial ro
       ?txn:(txn :> [ `Read ] Txn.t option)
-      env (fun t ->
+      (env :> [ `Read ] Env.t) (fun t ->
         Mdb.get t db (write Key.write k) |> Elt.read)
 
   let put { db ; env } ?txn ?(flags=PutFlags.none) k v =
@@ -314,7 +303,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
   let compare_key { db ; env } ?txn x y =
     Txn.trivial ro
       ?txn:(txn :> [ `Read ] Txn.t option)
-      env @@ fun txn ->
+      (env :> [ `Read ] Env.t) @@ fun txn ->
     Mdb.cmp txn db
       (write Key.write x)
       (write Key.write y)
@@ -325,7 +314,7 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
     fun x y ->
     Txn.trivial ro
       ?txn:(txn :> [ `Read ] Txn.t option)
-      env @@ fun txn ->
+      (env :> [ `Read ] Env.t) @@ fun txn ->
     Mdb.dcmp txn db
       (write Elt.write x)
       (write Elt.write y)
@@ -422,22 +411,22 @@ module IntDb = Make (Values.Key.Int) (Values.Elt.String)
 
 module type S = sig
 
-  type t
+  type -'perm t constraint 'perm = [< `Read | `Write ]
 
   type key
   type elt
 
-  val create : ?create:bool -> Env.t -> string -> t
-  val get : t -> ?txn:[> `Read] Txn.t -> key -> elt
-  val put : t -> ?txn:[> `Read | `Write] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
-  val append : t -> ?txn:[> `Read | `Write] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
-  val remove : t -> ?txn:[> `Read | `Write] Txn.t -> ?elt:elt -> key -> unit
+  val create : ?create:bool -> ([ `Read | `Write ] as 'perm) Env.t -> string -> 'perm t
+  val get : [> `Read ] t -> ?txn:[> `Read] Txn.t -> key -> elt
+  val put : [> `Read | `Write ] t -> ?txn:[> `Read | `Write] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
+  val append : [> `Read | `Write ] t -> ?txn:[> `Read | `Write] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
+  val remove : [> `Read | `Write ] t -> ?txn:[> `Read | `Write] Txn.t -> ?elt:elt -> key -> unit
 
   module Cursor : sig
-    type db
+    type -'perm db constraint 'perm = [< `Read | `Write ]
     type -'a t constraint 'a = [< `Read | `Write ]
 
-    val go : 'c cap -> ?txn:'c Txn.t -> db -> ('c t -> 'a) -> 'a
+    val go : 'perm perm -> ?txn:'perm Txn.t -> 'perm db -> ('perm t -> 'a) -> 'a
 
     val get : [> `Read ] t -> key * elt
     val put : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
@@ -460,11 +449,11 @@ module type S = sig
     val seek_dup : [> `Read ] t -> key -> elt
     val seek_range_dup : [> `Read ] t -> key -> elt
 
-  end with type db := t
+  end with type -'perm db := 'perm t
 
-  val stats : t -> Mdb.stats
-  val drop : ?delete:bool -> t -> unit
-  val compare_key : t -> ?txn:[> `Read ] Txn.t -> key -> key -> int
-  val compare : t -> ?txn:[> `Read ] Txn.t -> key -> key -> int
-  val compare_elt : t -> ?txn:[> `Read ] Txn.t -> elt -> elt -> int
+  val stats : [> `Read ] t -> Mdb.stats
+  val drop : ?delete:bool -> [> `Read | `Write ] t -> unit
+  val compare_key : [> `Read ] t -> ?txn:[> `Read ] Txn.t -> key -> key -> int
+  val compare : [> `Read ] t -> ?txn:[> `Read ] Txn.t -> key -> key -> int
+  val compare_elt : [> `Read ] t -> ?txn:[> `Read ] Txn.t -> elt -> elt -> int
 end
