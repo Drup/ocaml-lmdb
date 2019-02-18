@@ -12,24 +12,10 @@ Plugins: META (0.4), DevFiles (0.4)
 Library lmdb
   Path: src
   Modules: Lmdb
-  InternalModules: Lmdb_types, Lmdb_bindings, Lmdb_generated, Lmdb_generated_types
-  BuildDepends: bigstringaf, ctypes, ctypes.stubs, ctypes.foreign, unix-type-representations
+  InternalModules: Lmdb_bindings
+  BuildDepends: bigstringaf
   CCLib: -llmdb
-  CSources: lmdb_cstubs.c
-
-Executable lmdb_gen
-  Install: false
-  Path: src
-  CompiledObject: byte
-  MainIs: lmdb_bindgen.ml
-  BuildDepends: ctypes.stubs, ctypes.foreign, unix-type-representations
-
-Executable lmdb_typegen
-  Install: false
-  Path: src
-  CompiledObject: byte
-  MainIs: lmdb_typegen.ml
-  BuildDepends: ctypes.stubs, unix-type-representations
+  CSources: lmdb_stubs.c
 
 
 Executable "version"

@@ -25,6 +25,10 @@ Db.put db "Bactrian camel" "Elegant and beautiful animal with two humps."
 *)
 
 
+(** {2 Raw bindings} *)
+
+module Mdb :module type of Lmdb_bindings
+
 (** {2 Capabilities} *)
 
 type 'a cap
@@ -73,6 +77,8 @@ module Env : sig
     ?max_readers:int -> ?map_size:int -> ?max_dbs:int ->
     ?flags:Flags.t -> ?mode:int -> string -> t
 
+  val close : t -> unit
+
   val copy : ?compact:bool -> t -> string -> unit
 
   val copyfd : ?compact:bool -> t -> Unix.file_descr -> unit
@@ -89,16 +95,7 @@ module Env : sig
 
   val sync : ?force:bool -> t -> unit
 
-  type stats = {
-    psize : int;
-    depth : int;
-    branch_pages : int;
-    leaf_pages : int;
-    overflow_pages : int;
-    entries : int;
-  }
-
-  val stats : t -> stats
+  val stats : t -> Mdb.stats
 
   val max_readers : t -> int
 
@@ -106,7 +103,7 @@ module Env : sig
 
   val reader_list : t -> string list
 
-  val readers : t -> int
+  val reader_check : t -> int
 
 end
 
@@ -140,8 +137,8 @@ end
   *)
   val go :
     'a cap ->
-    Env.t ->
     ?txn:([< `Read | `Write ] as 'a) t ->
+    Env.t ->
     ('a t -> 'b) -> 'b option
 
   (** [abort txn] will abort the transaction. *)
@@ -201,7 +198,7 @@ module type S = sig
       [PutFlagse.no_overwrite] or [PutFlags.no_dup_data] was passed in [flags]
       or if the [db] does not support [Values.Flags.dup_sort].
   *)
-  val put : t -> ?txn:([> `Write ]) Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
+  val put : t -> ?txn:([> `Read | `Write ]) Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
 
   (** [append db k v] like [put], but append [k, v] at the end of the database [db] without performing comparisons.
 
@@ -209,7 +206,7 @@ module type S = sig
 
       @raise Error if a key is added that is smaller than the largest key already in the database.
   *)
-  val append : t -> ?txn:([> `Write ]) Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
+  val append : t -> ?txn:([> `Read | `Write ]) Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
 
   (** [remove db k] removes [k] from [db].
 
@@ -219,7 +216,7 @@ module type S = sig
 
       @raise Not_found if the key is not in the database.
   *)
-  val remove : t -> ?txn:([> `Write ]) Txn.t -> ?elt:elt -> key -> unit
+  val remove : t -> ?txn:([> `Read | `Write ]) Txn.t -> ?elt:elt -> key -> unit
 
 
   (** Manual iterators. *)
@@ -253,46 +250,46 @@ end
         @param txn if not provided, a transaction will implicitely be created
         and committed after [f] returns.
     *)
-    val go : 'c cap -> db -> ?txn:'c Txn.t -> ('c t -> 'a) -> 'a
+    val go : 'c cap -> ?txn:'c Txn.t -> db -> ('c t -> 'a) -> 'a
 
     (** [get cursor] returns the binding at the position of the cursor. *)
-    val get : _ t -> key * elt
+    val get : [> `Read ] t -> key * elt
 
     (** [put cursor k v] adds [k,v] to the database and move the cursor to
         its position. *)
-    val put : [> `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
+    val put : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
 
     (** [put_here cursor k v] adds [k,v] at the current position.
 
         @raise Error if the key provided is not the current key.
     *)
-    val put_here : [> `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
+    val put_here : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
 
     (** [remove cursor] removes the current binding.
 
         If the database allow duplicate keys and if [all] is [true], removes
         all the bindings associated to the current key.
     *)
-    val remove : [> `Write ] t -> ?all:bool -> unit -> unit
+    val remove : [> `Read | `Write ] t -> ?all:bool -> unit -> unit
 
     (** [first cursor] moves the cursor to the first binding. *)
-    val first : _ t -> key * elt
+    val first : [> `Read ] t -> key * elt
 
     (** [last cursor] moves the cursor to the last binding. *)
-    val last : _ t -> key * elt
+    val last : [> `Read ] t -> key * elt
 
     (** [next cursor] moves the cursor to the next binding. *)
-    val next : _ t -> key * elt
+    val next : [> `Read ] t -> key * elt
 
     (** [prev cursor] moves the cursor to the prev binding. *)
-    val prev : _ t -> key * elt
+    val prev : [> `Read ] t -> key * elt
 
     (** [seek cursor k] moves the cursor to the key [k]. *)
-    val seek : _ t -> key -> elt
+    val seek : [> `Read ] t -> key -> elt
 
     (** [seek_range cursor k] moves the cursor to the first key
         greater or equal to [k]. *)
-    val seek_range : _ t -> key -> elt
+    val seek_range : [> `Read ] t -> key -> elt
 
     (** {2 Operations on duplicated keys}
 
@@ -303,18 +300,18 @@ end
         database that does not support duplicate keys.
     *)
 
-    val first_dup : _ t -> key * elt
-    val last_dup : _ t -> key * elt
-    val next_dup : _ t -> key * elt
-    val prev_dup : _ t -> key * elt
+    val first_dup : [> `Read ] t -> key * elt
+    val last_dup : [> `Read ] t -> key * elt
+    val next_dup : [> `Read ] t -> key * elt
+    val prev_dup : [> `Read ] t -> key * elt
 
-    val seek_dup : _ t -> key -> elt
-    val seek_range_dup : _ t -> key -> elt
+    val seek_dup : [> `Read ] t -> key -> elt
+    val seek_range_dup : [> `Read ] t -> key -> elt
   end with type db := t
 
   (** {2 Misc} *)
 
-  val stats : t -> Env.stats
+  val stats : t -> Mdb.stats
 
   (** [drop ?delete db] Empties [db].
       @param delete If [true] [db] is also deleted from the environment
@@ -323,14 +320,14 @@ end
 
   (** [compare_key db ?txn a b]
      Compares [a] and [b] as if they were keys in [db]. *)
-  val compare_key : t -> ?txn:_ Txn.t -> key -> key -> int
+  val compare_key : t -> ?txn:[> `Read ] Txn.t -> key -> key -> int
 
   (** [compare db ?txn a b] Same as [compare_key]. *)
-  val compare : t -> ?txn:_ Txn.t -> key -> key -> int
+  val compare : t -> ?txn:[> `Read ] Txn.t -> key -> key -> int
 
   (** [compare_elt db ?txn a b]
      Compares [a] and [b] as if they were data elements in a [dup_sort] [db]. *)
-  val compare_elt : t -> ?txn:_ Txn.t -> elt -> elt -> int
+  val compare_elt : t -> ?txn:[> `Read ] Txn.t -> elt -> elt -> int
 end
 
 (** Database with string keys and string elements. *)
@@ -399,4 +396,4 @@ module Make (Key : Values.S) (Elt : Values.S) :
   S with type key = Key.t
      and type elt = Elt.t
 
-val version : unit -> string * int * int * int
+val version : string * int * int * int

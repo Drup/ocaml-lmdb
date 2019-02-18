@@ -1,44 +1,16 @@
-open Ctypes
-open PosixTypes
+module Mdb = Lmdb_bindings
+module Bigstring = Bigstringaf
 
-module S = Lmdb_bindings.Make(Lmdb_generated)
-open S
-open Lmdb_bindings.T
+let version = Mdb.version
 
-let dummy_ref = Weak.create 1
-(* keep a alive while b is alive *)
-let alive_while a b =
-  Gc.finalise (fun _ -> Weak.set dummy_ref 0 (Some (Obj.repr a))) b
-
-let alloc = allocate_n ~count:1
-
-let opt_iter f = function
-  | None -> ()
-  | Some x -> f x
-
-(** {2 High level binding} *)
-
-let version () =
-  let major = alloc int in
-  let minor = alloc int in
-  let patch = alloc int in
-  let s = mdb_version major minor patch in
-  (s, !@major, !@minor, !@patch)
+exception Not_found = Not_found
+exception Exists = Mdb.Exists
+exception Error = Mdb.Error
 
 type error = int
 
-exception Not_found = Lmdb_bindings.Not_found
-exception Exists = Lmdb_bindings.Exists
-exception Error = Lmdb_bindings.Error
-
-let () =
-  Printexc.register_printer @@ function
-  | Error i -> Some ("Lmdb.Error(" ^ mdb_strerror i ^ ")")
-  | Exists -> Some "Lmdb.Exists"
-  | _ -> None
-
 let pp_error fmt i =
-  Format.fprintf fmt "%s@." (mdb_strerror i)
+  Format.fprintf fmt "%s@." (Mdb.strerror i)
 
 type 'a cap =
   | Ro : [ `Read ] cap
@@ -48,131 +20,70 @@ let rw = Rw
 
 module Env = struct
 
-  type t = mdb_env
+  type t = [> `Read | `Write ] Mdb.env
 
   (* exception Assert of (t * string) *)
 
-  module Flags = struct
-    type t = mdb_env_flag
-    let (+) = Unsigned.UInt.logor
-    let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
-    let eq f f' = Unsigned.UInt.(compare f f' = 0)
-    let none = Unsigned.UInt.zero
-    let fixed_map   = mdb_FIXEDMAP
-    let no_subdir   = mdb_NOSUBDIR
-    let no_sync     = mdb_NOSYNC
-    let read_only     = mdb_RDONLY
-    let no_meta_sync = mdb_NOMETASYNC
-    let write_map   = mdb_NOMETASYNC
-    let map_async   = mdb_MAPASYNC
-    let no_tls      = mdb_NOTLS
-    let no_lock     = mdb_NOLOCK
-    let no_read_ahead  = mdb_NORDAHEAD
-    let no_mem_init  = mdb_NOMEMINIT
-  end
+  module Flags = Mdb.EnvFlags
 
   let create ?max_readers ?map_size ?max_dbs ?(flags=Flags.none) ?(mode=0o755) path =
-    let mode = Mode.of_int mode in
-    let env_ptr = alloc mdb_env in
-    mdb_env_create env_ptr ;
-    let env = !@env_ptr in
+    let env = Mdb.env_create () in
     try
-      opt_iter (mdb_env_set_mapsize env) map_size ;
-      opt_iter (mdb_env_set_maxdbs env) max_dbs ;
-      opt_iter (mdb_env_set_maxreaders env) max_readers ;
-      (* mdb_env_set_assert env (fun env s -> raise (Assert (env,s))) ; *)
-      mdb_env_open env path flags mode ;
-      Gc.finalise mdb_env_close env ;
+      let opt_iter f = function
+        | None -> ()
+        | Some x -> f x
+      in
+      opt_iter (Mdb.env_set_mapsize env) map_size ;
+      opt_iter (Mdb.env_set_maxdbs env) max_dbs ;
+      opt_iter (Mdb.env_set_maxreaders env) max_readers ;
+      (* Mdb.env_set_assert env (fun env s -> raise (Assert (env,s))) ; *)
+      Mdb.env_open env path flags mode ;
       env
-    with Error _ as exn -> mdb_env_close env; raise exn
+    with Error _ as exn -> Mdb.env_close env; raise exn
 
-  module CopyFlags = struct
-    type t = mdb_copy_flag
-    let none : t = Unsigned.UInt.zero
-    let compact = mdb_CP_COMPACT
-  end
+  let close = Mdb.env_close
 
   let copy ?(compact=false) db s =
-    let flag = if compact then CopyFlags.compact else CopyFlags.none in
-    mdb_env_copy2 db s flag
+    let flag = if compact then Mdb.CopyFlags.compact else Mdb.CopyFlags.none in
+    Mdb.env_copy db s flag
 
   let copyfd ?(compact=false) env (fd : Unix.file_descr) =
-    let flag = if compact then CopyFlags.compact else CopyFlags.none in
-    mdb_env_copyfd2 env fd flag
+    let flag = if compact then Mdb.CopyFlags.compact else Mdb.CopyFlags.none in
+    Mdb.env_copyfd env fd flag
 
-  let set_flags = mdb_env_set_flags
-  let flags env =
-    let flags = alloc mdb_env_flag in
-    mdb_env_get_flags env flags ;
-    !@flags
+  let set_flags = Mdb.env_set_flags
+  let flags = Mdb.env_get_flags
 
-  let set_map_size = mdb_env_set_mapsize
+  let set_map_size = Mdb.env_set_mapsize
 
-  let path env =
-    let path = alloc string in
-    mdb_env_get_path env path ;
-    !@path
+  let path = Mdb.env_get_path
+  let sync ?(force=false) env = Mdb.env_sync env force
 
-  let fd env =
-    let fd = alloc mdb_filehandle_t in
-    mdb_env_get_fd env fd ;
-    !@fd
+  let fd = Mdb.env_get_fd
 
-  let sync ?(force=false) env = mdb_env_sync env force
+  let max_readers = Mdb.env_get_maxreaders
 
-  let max_readers env =
-    let i = alloc int in
-    mdb_env_get_maxreaders env i ;
-    !@i
-
-  let max_keysize = mdb_env_get_maxkeysize
+  let max_keysize = Mdb.env_get_maxkeysize
 
   let reader_list env =
     let x = ref [] in
-    mdb_reader_list env (fun s _ -> x:=  s::!x ; 0) null ;
+    assert (Mdb.reader_list env (fun s -> x := s::!x ; 0) = 0);
     !x
 
-  let readers env =
-    let i = alloc int in
-    mdb_reader_check env i ;
-    !@i
+  let reader_check = Mdb.reader_check
 
-  (** Stat type *)
-
-  type stats = {
-    psize : int ;
-    depth : int ;
-    branch_pages : int ;
-    leaf_pages : int ;
-    overflow_pages : int ;
-    entries : int ;
-  }
-  let make_stats stat = {
-    psize = getf stat ms_psize ;
-    depth = getf stat ms_depth ;
-    branch_pages = getf stat ms_branch_pages ;
-    leaf_pages = getf stat ms_leaf_pages ;
-    overflow_pages = getf stat ms_overflow_pages ;
-    entries = getf stat ms_entries ;
-  }
-
-
-  let stats env =
-    let stats = make mdb_stat in
-    mdb_env_stat env (addr stats) ;
-    make_stats stats
-
+  let stats = Mdb.env_stat
 end
 
 module Txn :
 sig
-  type -'a t = mdb_txn constraint 'a = [< `Read | `Write ]
+  type -'perm t = 'perm Mdb.txn constraint 'perm = [< `Read | `Write ]
 
   val go :
-    'a cap ->
+    'perm cap ->
+    ?txn:([< `Read | `Write ] as 'perm) t ->
     Env.t ->
-    ?txn:([< `Read | `Write ] as 'a) t ->
-    ('a t -> 'b) -> 'b option
+    ('perm t -> 'b) -> 'b option
 
   val abort : 'a t -> 'b
 
@@ -181,58 +92,56 @@ sig
   (* not exported: *)
   val trivial :
     'a cap ->
-    Env.t ->
     ?txn:'a t ->
+    Env.t ->
     ('a t -> 'b) -> 'b
 end
 =
 struct
-  type -'a t = mdb_txn constraint 'a = [< `Read | `Write ]
+  type -'perm t = 'perm Mdb.txn constraint 'perm = [< `Read | `Write ]
 
-  exception Abort of mdb_txn
+  exception Abort of Obj.t
 
-  let env txn = mdb_txn_env txn
+  let env txn = Obj.magic @@ Mdb.txn_env txn
 
-  let abort txn = raise (Abort txn)
+  let abort txn = raise (Abort (Obj.repr txn))
 
   let go :
-    'a cap ->
+    'perm cap ->
+    ?txn:([< `Read | `Write ] as 'perm) t ->
     Env.t ->
-    ?txn: 'a t ->
-    ('a t -> 'b) -> 'b option
+    ('perm t -> 'b) -> 'b option
     =
-    fun (type c) (rw :c cap) env ?txn:parent f ->
-    let ptr_txn = alloc mdb_txn in
+    fun (type c) (rw :c cap) ?txn:parent env f ->
     let txn_flag =
       match rw with
       | Ro -> Env.Flags.read_only
       | Rw -> Env.Flags.none
     in
-    mdb_txn_begin env parent txn_flag ptr_txn ;
-    let txn = !@ptr_txn in
+    let txn =
+      Mdb.txn_begin
+        (env : Env.t :> [< `Read | `Write ] Mdb.env)
+        (parent :> [< `Read | `Write ] t option)
+        txn_flag
+    in
     try
       let x = f txn in
-      mdb_txn_commit txn ; Some x
+      Mdb.txn_commit txn ; Some x
     with
-      | Abort t' when t' == txn || parent = None ->
-        mdb_txn_abort txn ; None
-      | exn -> mdb_txn_abort txn ; raise exn
+      | Abort t when t == Obj.repr txn || parent = None ->
+        Mdb.txn_abort txn ; None
+      | exn -> Mdb.txn_abort txn ; raise exn
 
   (* Used internally for trivial functions, not exported. *)
   let trivial :
     'a cap ->
-    Env.t ->
     ?txn:'a t ->
+    Env.t ->
     ('a t -> 'b) -> 'b
     =
-    fun rw e ?txn f ->
+    fun rw ?txn e f ->
     match txn with
-    | Some txn ->
-      let e' = env txn in
-      if ptr_compare e' e <> 0
-      then invalid_arg
-          "Lmdb: database and transaction are from different environments";
-      f txn
+    | Some txn -> f txn
     | None ->
       match go rw e f with
       | None -> assert false
@@ -240,39 +149,10 @@ struct
 end
 
 
-module PutFlags = struct
-  type t = mdb_put_flag
-  let (+) = Unsigned.UInt.logor
-  let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
-  let eq f f' = Unsigned.UInt.(compare f f' = 0)
-  let none = Unsigned.UInt.zero
-  let no_overwrite = mdb_NOOVERWRITE
-  let no_dup_data   = mdb_NODUPDATA
-  let current     = mdb_CURRENT
-  let _reserve     = mdb_RESERVE
-  let append      = mdb_APPEND
-  let append_dup   = mdb_APPENDDUP
-  let _multiple    = mdb_MULTIPLE
-end
+module PutFlags = Mdb.PutFlags
 
-module Flags = struct
-  type t = mdb_env_flag
-  let (+) = Unsigned.UInt.logor
-  let test f m = Unsigned.UInt.(compare (logand f m) zero <> 0)
-  let eq f f' = Unsigned.UInt.(compare f f' = 0)
-  let none = Unsigned.UInt.zero
-  let reverse_key = mdb_REVERSEKEY
-  let dup_sort    = mdb_DUPSORT
-  let dup_fixed   = mdb_DUPFIXED
-  let integer_dup = mdb_INTEGERDUP
-  let reverse_dup = mdb_REVERSEDUP
-  let integer_key = mdb_INTEGERKEY
+module Flags = Mdb.DbiFlags
 
-  (* Not exported *)
-  let create     = mdb_CREATE
-end
-
-module Bigstring = Bigstringaf
 type buffer = Bigstring.t
 
 module Values = struct
@@ -357,76 +237,57 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
   let has_dup_flag = Flags.(test dup_sort) def_flags
 
-  type t = {env : Env.t ; db : mdb_dbi }
+  type t = {env : Env.t ; db : Mdb.dbi }
 
   type key = Key.t
   type elt = Elt.t
-
-  let dbval_of_buffer b =
-    let mvp = addr (make mdb_val) in
-    alive_while b mvp; (* Make sure buffer will stay alive while mvp is in use. *)
-    (mvp |-> mv_size) <-@ Bigstring.length b ;
-    (mvp |-> mv_data) <-@ to_voidp @@ bigarray_start array1 b ; (* Reference to b is lost here! *)
-    (*Gc.full_major () ;*) (* trigger possible use-after-free. *)
-    mvp
-  let buffer_of_dbval mvp =
-    (* no need to keep a reference to mvp here, because the memory the bigarray
-     * is mapped to is in the lmdb map and only valid as long as the transaction
-     * is alive. The user knows this. *)
-    bigarray_of_ptr array1
-      (!@ (mvp |-> mv_size))
-      Char
-      (!@ (mvp |-> mv_data) |> from_voidp char)
 
   let write f v =
     f Bigstring.create v
 
   let create ?(create=true) env name =
-    let db = alloc mdb_dbi in
     let flags =
       if create
       then Flags.(create + def_flags)
       else def_flags
     in
-    let f txn = mdb_dbi_open txn name flags db in
-    if create
-    then Txn.trivial rw env f
-    else Txn.trivial ro env f ;
-    (* We do not put a finaliser here, as it would break with mdb_drop.
+    let f txn = Mdb.dbi_open txn (Some name) flags in
+    let dbi =
+      if create
+      then Txn.trivial rw env f
+      else Txn.trivial ro env f
+    in
+    (* We do not put a finaliser here, as it would break with Mdb.drop.
        Slight memory leak, but nothing terrible. *)
-    (* Gc.finalise mdb_dbi_close env !@db *)
-    { env ; db = !@db }
+    (* Gc.finalise Mdb.dbi_close env !@db *)
+    { env ; db = dbi }
 
   let stats { env ; db } =
-    let stats = make mdb_stat in
     Txn.trivial ro env (fun t ->
-      mdb_dbi_stat t db (addr stats)
-    ) ;
-    Env.make_stats stats
+      Mdb.dbi_stat t db
+    )
 
   let _flags { env ; db } =
-    let flags = alloc mdb_dbi_open_flag in
     Txn.trivial ro env (fun t ->
-      mdb_dbi_flags t db flags
-    ) ;
-    !@flags
+      Mdb.dbi_flags t db
+    )
 
   let drop ?(delete=false) { env ; db } =
     Txn.trivial rw env (fun t ->
-      mdb_drop t db delete
+      Mdb.drop t db delete
     )
 
   let get { db ; env } ?txn k =
-    let v = addr @@ make mdb_val in
-    Txn.trivial ro ?txn env (fun t ->
-        mdb_get t db (dbval_of_buffer @@ write Key.write k) v;
-        Elt.read @@ buffer_of_dbval v)
+    Txn.trivial ro
+      ?txn:(txn :> [ `Read ] Txn.t option)
+      env (fun t ->
+        Mdb.get t db (write Key.write k) |> Elt.read)
 
   let put { db ; env } ?txn ?(flags=PutFlags.none) k v =
     Txn.trivial rw ?txn env (fun t ->
-      mdb_put t db
-        (dbval_of_buffer @@ write Key.write k)
-        (dbval_of_buffer @@ write Elt.write v)
+      Mdb.put t db
+        (write Key.write k)
+        (write Elt.write v)
         flags
     )
 
@@ -440,53 +301,54 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
 
   let remove { db ; env } ?txn ?elt k =
     Txn.trivial rw ?txn env (fun t ->
-      match elt with
-        | Some v ->
-          mdb_del t db
-            (dbval_of_buffer @@ write Key.write k)
-            (dbval_of_buffer @@ write Elt.write v)
-        | None ->
-          mdb_del t db
-            (dbval_of_buffer @@ write Key.write k)
-            (from_voidp mdb_val null)
+      let va = match elt with
+        | None -> Mdb.Block_option.none
+        | Some value ->
+          Mdb.Block_option.some @@ Elt.write Bigstring.create value
+      in
+      Mdb.del t db
+        (write Key.write k)
+        va
     )
 
   let compare_key { db ; env } ?txn x y =
-    Txn.trivial ro ?txn env @@ fun txn ->
-    mdb_cmp txn db
-      (dbval_of_buffer @@ write Key.write x)
-      (dbval_of_buffer @@ write Key.write y)
+    Txn.trivial ro
+      ?txn:(txn :> [ `Read ] Txn.t option)
+      env @@ fun txn ->
+    Mdb.cmp txn db
+      (write Key.write x)
+      (write Key.write y)
 
   let compare_elt { db ; env } ?txn :elt -> elt -> int =
     if not has_dup_flag then
       invalid_arg "Lmdb: elements are only comparable in a dup_sort db";
     fun x y ->
-    Txn.trivial ro ?txn env @@ fun txn ->
-    mdb_dcmp txn db
-      (dbval_of_buffer @@ write Elt.write x)
-      (dbval_of_buffer @@ write Elt.write y)
+    Txn.trivial ro
+      ?txn:(txn :> [ `Read ] Txn.t option)
+      env @@ fun txn ->
+    Mdb.dcmp txn db
+      (write Elt.write x)
+      (write Elt.write y)
 
   let compare = compare_key
 
   module Cursor = struct
 
-    type -'a t = mdb_cursor constraint 'a = [< `Read | `Write ]
+    type -'perm t = 'perm Mdb.cursor constraint 'perm = [< `Read | `Write ]
 
-    let go rw db ?txn f =
-      let ptr_cursor = alloc mdb_cursor in
+    let go rw ?txn db f =
       Txn.trivial rw ?txn db.env @@ fun txn ->
-      mdb_cursor_open txn db.db ptr_cursor ;
-      let cursor : _ t = !@ptr_cursor in
+      let cursor : _ t = Mdb.cursor_open txn db.db in
       try
         let res = f cursor in
-        mdb_cursor_close cursor ;
+        Mdb.cursor_close cursor ;
         res
-      with exn -> mdb_cursor_close cursor ; raise exn
+      with exn -> Mdb.cursor_close cursor ; raise exn
 
     let put cursor ?(flags=PutFlags.none) k v =
-      mdb_cursor_put cursor
-        (dbval_of_buffer @@ write Key.write k)
-        (dbval_of_buffer @@ write Elt.write v)
+      Mdb.cursor_put cursor
+        (write Key.write k)
+        (write Elt.write v)
         flags
 
     let put_here cursor ?(flags=PutFlags.none) k v =
@@ -502,30 +364,34 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
                  this database does not have the dupsort flag enabled.")
         else PutFlags.none
       in
-      mdb_cursor_del cursor flag
+      Mdb.cursor_del cursor flag
 
     let get_prim op cursor =
-      let k = addr @@ make mdb_val in
-      let v = addr @@ make mdb_val in
-      mdb_cursor_get cursor k v op ;
-      Key.read @@ buffer_of_dbval k,
-      Elt.read @@ buffer_of_dbval v
+      let k,v =
+      Mdb.cursor_get cursor
+        Mdb.Block_option.none
+        Mdb.Block_option.none
+        op
+      in
+      Key.read k, Elt.read v
 
-    let get = get_prim MDB_GET_CURRENT
-    let first = get_prim MDB_FIRST
-    let last = get_prim MDB_LAST
-    let next = get_prim MDB_NEXT
-    let prev = get_prim MDB_PREV
+    let get = get_prim Mdb.get_current
+    let first = get_prim Mdb.first
+    let last = get_prim Mdb.last
+    let next = get_prim Mdb.next
+    let prev = get_prim Mdb.prev
 
     let seek_prim op cursor k =
-      let v = addr @@ make mdb_val in
-      mdb_cursor_get cursor
-        (dbval_of_buffer @@ write Key.write k)
-        v op ;
-      Elt.read @@ buffer_of_dbval v
+      let _,v =
+        Mdb.cursor_get cursor
+          (Mdb.Block_option.some @@ write Key.write k)
+          Mdb.Block_option.none
+          op
+      in
+      Elt.read v
 
-    let seek = seek_prim MDB_SET
-    let seek_range = seek_prim MDB_SET_RANGE
+    let seek = seek_prim Mdb.set
+    let seek_range = seek_prim Mdb.set_range
 
     let test_dup s f op cursor =
       if has_dup_flag then f op cursor
@@ -533,17 +399,17 @@ module Make (Key : Values.S) (Elt : Values.S) = struct
             "Lmdb.Cursor.%s: Operation unsuported: this database does not have the \
              dupsort flag enabled." s)
 
-    let first_dup = test_dup "first_dup" get_prim MDB_FIRST_DUP
-    let last_dup = test_dup "last_dup" get_prim MDB_LAST_DUP
-    let next_dup = test_dup "next_dup" get_prim MDB_NEXT_DUP
-    let prev_dup = test_dup "prev_dup" get_prim MDB_PREV_DUP
+    let first_dup = test_dup "first_dup" get_prim Mdb.first_dup
+    let last_dup = test_dup "last_dup" get_prim Mdb.last_dup
+    let next_dup = test_dup "next_dup" get_prim Mdb.next_dup
+    let prev_dup = test_dup "prev_dup" get_prim Mdb.prev_dup
 
-    let seek_dup = test_dup "seek_dup" seek_prim MDB_GET_BOTH
-    let seek_range_dup = test_dup "seek_range_dup" seek_prim MDB_GET_BOTH_RANGE
+    let seek_dup = test_dup "seek_dup" seek_prim Mdb.get_both
+    let seek_range_dup = test_dup "seek_range_dup" seek_prim Mdb.get_both_range
 
     (* The following two operations are not exposed, due to inherent unsafety:
-       - MDB_GET_MULTIPLE
-       - MDB_NEXT_MULTIPLE
+       - Mdb.GET_MULTIPLE
+       - Mdb.NEXT_MULTIPLE
     *)
 
   end
@@ -563,42 +429,42 @@ module type S = sig
 
   val create : ?create:bool -> Env.t -> string -> t
   val get : t -> ?txn:[> `Read] Txn.t -> key -> elt
-  val put : t -> ?txn:[> `Read] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
-  val append : t -> ?txn:[> `Read] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
-  val remove : t -> ?txn:[> `Read] Txn.t -> ?elt:elt -> key -> unit
+  val put : t -> ?txn:[> `Read | `Write] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
+  val append : t -> ?txn:[> `Read | `Write] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
+  val remove : t -> ?txn:[> `Read | `Write] Txn.t -> ?elt:elt -> key -> unit
 
   module Cursor : sig
     type db
     type -'a t constraint 'a = [< `Read | `Write ]
 
-    val go : 'c cap -> db -> ?txn:'c Txn.t -> ('c t -> 'a) -> 'a
+    val go : 'c cap -> ?txn:'c Txn.t -> db -> ('c t -> 'a) -> 'a
 
-    val get : _ t -> key * elt
-    val put : [> `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
-    val put_here : [> `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
-    val remove : [> `Write ] t -> ?all:bool -> unit -> unit
+    val get : [> `Read ] t -> key * elt
+    val put : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
+    val put_here : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
+    val remove : [> `Read | `Write ] t -> ?all:bool -> unit -> unit
 
-    val first : _ t -> key * elt
-    val last : _ t -> key * elt
-    val next : _ t -> key * elt
-    val prev : _ t -> key * elt
+    val first : [> `Read ] t -> key * elt
+    val last : [> `Read ] t -> key * elt
+    val next : [> `Read ] t -> key * elt
+    val prev : [> `Read ] t -> key * elt
 
-    val seek : _ t -> key -> elt
-    val seek_range : _ t -> key -> elt
+    val seek : [> `Read ] t -> key -> elt
+    val seek_range : [> `Read ] t -> key -> elt
 
-    val first_dup : _ t -> key * elt
-    val last_dup : _ t -> key * elt
-    val next_dup : _ t -> key * elt
-    val prev_dup : _ t -> key * elt
+    val first_dup : [> `Read ] t -> key * elt
+    val last_dup : [> `Read ] t -> key * elt
+    val next_dup : [> `Read ] t -> key * elt
+    val prev_dup : [> `Read ] t -> key * elt
 
-    val seek_dup : _ t -> key -> elt
-    val seek_range_dup : _ t -> key -> elt
+    val seek_dup : [> `Read ] t -> key -> elt
+    val seek_range_dup : [> `Read ] t -> key -> elt
 
   end with type db := t
 
-  val stats : t -> Env.stats
+  val stats : t -> Mdb.stats
   val drop : ?delete:bool -> t -> unit
-  val compare_key : t -> ?txn:_ Txn.t -> key -> key -> int
-  val compare : t -> ?txn:_ Txn.t -> key -> key -> int
-  val compare_elt : t -> ?txn:_ Txn.t -> elt -> elt -> int
+  val compare_key : t -> ?txn:[> `Read ] Txn.t -> key -> key -> int
+  val compare : t -> ?txn:[> `Read ] Txn.t -> key -> key -> int
+  val compare_elt : t -> ?txn:[> `Read ] Txn.t -> elt -> elt -> int
 end
