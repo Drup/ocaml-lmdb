@@ -7,7 +7,8 @@ external strerror : int -> string = "mdbs_strerror"
 (* Initialise constants and exceptions *)
 external init : unit -> ((string * int * int * int) * int array)
   = "mdbs_init"
-let [@ocaml.warning "-8"]
+[@@@ocaml.warning "-8"]
+let
   ( version
   , [| append
      ; appenddup
@@ -66,6 +67,7 @@ let [@ocaml.warning "-8"]
     | _ -> None
   end;
   init ()
+[@@@ocaml.warning "+8"]
 
 module type Flags = sig
   type t
