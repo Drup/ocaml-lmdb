@@ -531,6 +531,8 @@ module Cursor = struct
   let last       c = get_prim Ops.last c
   let next       c = get_prim Ops.next c
   let prev       c = get_prim Ops.prev c
+  let next_nodup c = get_prim Ops.next_nodup c
+  let prev_nodup c = get_prim Ops.prev_nodup c
 
   let count { cursor; _ } = Mdb.cursor_count cursor
 

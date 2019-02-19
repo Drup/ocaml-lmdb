@@ -559,6 +559,11 @@ end
   *)
   val next        : ('key, 'value, [> `Read ]) t -> 'key * 'value
 
+  (** [next_nodup cursor]
+      moves the cursor to the {e first} value of the next key.
+  *)
+  val next_nodup  : ('key, 'value, [> `Read ]) t -> 'key * 'value
+
   (** [next_dup cursor] moves the cursor to the next value of the current key.
       @raise Not_found if the cursor is already on the last value of the current key.
   *)
@@ -569,6 +574,11 @@ end
       {e last value} of the {e previous key}.
   *)
   val prev        : ('key, 'value, [> `Read ]) t -> 'key * 'value
+
+  (** [prev_nodup cursor]
+      moves the cursor to the {e last} value of the previous key.
+  *)
+  val prev_nodup  : ('key, 'value, [> `Read ]) t -> 'key * 'value
 
   (** [prev_dup cursor] moves the cursor to the previous value of the current key.
       @raise Not_found if the cursor is already on the first value of the current key.

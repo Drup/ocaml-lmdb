@@ -179,17 +179,19 @@ let test_cursor =
       first cursor              |> check_kv "first" (0,0);
       check_raises "walk before first" Not_found
         (fun () -> prev cursor |> ignore);
+      next_nodup cursor         |> check_kv  "next_nodup"      (1,1);
       seek cursor 5             |> check_kv  "seek 5"    (5,5);
       prev cursor               |> check_kv  "prev"      (4,4);
       current cursor            |> check_kv  "current"   (4,4);
       remove cursor;
       current cursor            |> check_kv  "shift after remove" (5,5);
-      replace cursor 4; (* delete (5,5), add (5,4) *)
-      current cursor            |> check_kv  "shift after replace" (5,4);
+      next_nodup cursor         |> check_kv  "next_nodup"      (6,6);
+      replace cursor 4; (* delete (6,6), add (6,4) *)
+      current cursor            |> check_kv  "shift after put_here" (6,4);
       check_raises "deleted by replace" Not_found
-        (fun () -> seek_dup cursor 5 5);
-      seek_dup cursor 5 4;
-      current cursor            |> check_kv  "replace added" (5,4);
+        (fun () -> seek_dup cursor 6 6);
+      seek_dup cursor 6 4;
+      current cursor            |> check_kv  "replace added" (6,4);
       last cursor |> ignore;
       check_raises "walking beyond last key" Not_found
         (fun () -> next cursor |> ignore);
