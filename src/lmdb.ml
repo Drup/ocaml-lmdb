@@ -24,7 +24,7 @@ module Env = struct
   module Flags = Mdb.EnvFlags
 
   let create (perm :'perm perm)
-      ?max_readers ?map_size ?max_dbs
+      ?max_readers ?map_size ?max_maps
       ?(flags=Flags.none) ?(mode=0o755)
       path =
     let flags =
@@ -39,7 +39,7 @@ module Env = struct
         | Some x -> f x
       in
       opt_iter (Mdb.env_set_mapsize env) map_size ;
-      opt_iter (Mdb.env_set_maxdbs env) max_dbs ;
+      opt_iter (Mdb.env_set_maxdbs env) max_maps ;
       opt_iter (Mdb.env_set_maxreaders env) max_readers ;
       (* Mdb.env_set_assert env (fun env s -> raise (Assert (env,s))) ; *)
       Mdb.env_open env path flags mode ;
@@ -136,7 +136,7 @@ struct
       | Some x -> x
 end
 
-module Db = struct
+module Map = struct
   module Conv = struct
     type bigstring = Bigstring.t
 
@@ -320,7 +320,7 @@ module Db = struct
       let flags = Mdb.dbi_flags txn dbi in
       begin match dup with
         | true when not (Conv.Flags.(test dup_sort) flags) ->
-          invalid_arg "Lmdb.Db.create: duplicates not supported on this db"
+          invalid_arg "Lmdb.Map.create: duplicates not supported on this map"
         | true | false -> ()
       end;
       dbi, flags
@@ -349,7 +349,7 @@ module Db = struct
       let flags = Mdb.dbi_flags txn dbi in
       begin match dup with
         | true when not (Conv.Flags.(test dup_sort) flags) ->
-          invalid_arg "Lmdb.Db.create: duplicates not supported on this db"
+          invalid_arg "Lmdb.Map.create: duplicates not supported on this map"
         | true | false -> ()
       end;
       dbi, flags
@@ -371,43 +371,43 @@ module Db = struct
     Txn.trivial ro env ?txn @@ fun txn ->
     Mdb.dbi_flags txn dbi
 
-  let drop ?txn ?(delete=false) ({dbi ;env ;_ } as db) =
-    if delete then db.dbi <- Mdb.invalid_dbi;
+  let drop ?txn ?(delete=false) ({dbi ;env ;_ } as map) =
+    if delete then map.dbi <- Mdb.invalid_dbi;
     Txn.trivial rw ?txn env @@ fun txn ->
     Mdb.drop txn dbi delete
 
-  let get (type key value) db ?txn k =
-    let module Key = (val db.key :Conv.S with type t = key) in
-    let module Value = (val db.value :Conv.S with type t = value) in
+  let get (type key value) map ?txn k =
+    let module Key = (val map.key :Conv.S with type t = key) in
+    let module Value = (val map.value :Conv.S with type t = value) in
     Txn.trivial ro
       ?txn:(txn :> [ `Read ] Txn.t option)
-      (db.env :> [ `Read ] Env.t)
+      (map.env :> [ `Read ] Env.t)
     @@ fun txn ->
-    Mdb.get txn db.dbi (Key.write Bigstring.create k)
+    Mdb.get txn map.dbi (Key.write Bigstring.create k)
     |> Value.read
 
   module Flags = Mdb.PutFlags
 
-  let put (type key value) db ?txn ?(flags=Flags.none) k v =
-    let module Key = (val db.key :Conv.S with type t = key) in
-    let module Value = (val db.value :Conv.S with type t = value) in
-    if Conv.Flags.(test dup_sort db.flags)
+  let put (type key value) map ?txn ?(flags=Flags.none) k v =
+    let module Key = (val map.key :Conv.S with type t = key) in
+    let module Value = (val map.value :Conv.S with type t = value) in
+    if Conv.Flags.(test dup_sort map.flags)
     then begin
       let ka = Key.write Bigstring.create k in
       let va = Value.write Bigstring.create v in
-      Txn.trivial rw ?txn db.env @@ fun txn ->
-      Mdb.put txn db.dbi ka va flags
+      Txn.trivial rw ?txn map.env @@ fun txn ->
+      Mdb.put txn map.dbi ka va flags
     end
     else begin
       let ka = Key.write Bigstring.create k in
-      Txn.trivial rw ?txn db.env @@ fun txn ->
+      Txn.trivial rw ?txn map.env @@ fun txn ->
       let va_opt = ref Mdb.Block_option.none in
       let alloc len =
         if Mdb.Block_option.is_some !va_opt then
           invalid_arg "Lmdb: converting function tried to allocate twice.";
         va_opt :=
           Mdb.Block_option.some @@
-          Mdb.put_reserve txn db.dbi ka len flags;
+          Mdb.put_reserve txn map.dbi ka len flags;
         Mdb.Block_option.get_unsafe !va_opt
       in
       let va = Value.write alloc v in
@@ -416,41 +416,43 @@ module Db = struct
         if Mdb.Block_option.get_unsafe !va_opt != va then
           invalid_arg "Lmdb: converting function allocated, but returned different buffer."
       end
-      else Mdb.put txn db.dbi ka va flags
+      else Mdb.put txn map.dbi ka va flags
     end
 
-  let remove (type key value) db ?txn ?value k =
-    let module Key = (val db.key :Conv.S with type t = key) in
+  let remove (type key value) map ?txn ?value k =
+    let module Key = (val map.key :Conv.S with type t = key) in
     let ka = Key.write Bigstring.create k in
     let va = match value with
       | None -> Mdb.Block_option.none
       | Some value ->
-        let module Value = (val db.value :Conv.S with type t = value) in
+        let module Value = (val map.value :Conv.S with type t = value) in
         Mdb.Block_option.some @@ Value.write Bigstring.create value
     in
-    Txn.trivial rw ?txn db.env @@ fun txn ->
-    Mdb.del txn db.dbi ka va
+    Txn.trivial rw ?txn map.env @@ fun txn ->
+    Mdb.del txn map.dbi ka va
 
-  let compare_key (type key) db ?txn x y =
-    let module Key = (val db.key :Conv.S with type t = key) in
+  let compare_key (type key) map ?txn x y =
+    let module Key = (val map.key :Conv.S with type t = key) in
     let xa = Key.write Bigstring.create x in
     let ya = Key.write Bigstring.create y in
     Txn.trivial ro
       ?txn:(txn :> [ `Read ] Txn.t option)
-      (db.env :> [ `Read ] Env.t)
+      (map.env :> [ `Read ] Env.t)
     @@ fun txn ->
-    Mdb.cmp txn db.dbi xa ya
+    Mdb.cmp txn map.dbi xa ya
 
-  let compare_val (type value) db ?txn =
-    let module Value = (val db.value :Conv.S with type t = value) in
+  let compare_val (type value) map ?txn =
+    if not Conv.Flags.(test dup_sort map.flags) then
+      invalid_arg "Lmdb: elements are only comparable in a dup_sort map";
+    let module Value = (val map.value :Conv.S with type t = value) in
     fun x y ->
     let xa = Value.write Bigstring.create x in
     let ya = Value.write Bigstring.create y in
     Txn.trivial ro
       ?txn:(txn :> [ `Read ] Txn.t option)
-      (db.env :> [ `Read ] Env.t)
+      (map.env :> [ `Read ] Env.t)
     @@ fun txn ->
-    Mdb.dcmp txn db.dbi xa ya
+    Mdb.dcmp txn map.dbi xa ya
 
   let compare = compare_key
 end
@@ -463,16 +465,16 @@ module Cursor = struct
 
   type ('k, 'v, -'perm) t =
     { cursor: 'perm Mdb.cursor
-    ; db: ('k, 'v, 'perm) Db.t }
+    ; map: ('k, 'v, 'perm) Map.t }
     constraint 'perm = [< `Read | `Write ]
 
   exception Abort of Obj.t
 
-  let go perm ?txn (db :_ Db.t) f =
-    Txn.trivial perm db.env ?txn @@ fun t ->
+  let go perm ?txn (map :_ Map.t) f =
+    Txn.trivial perm map.env ?txn @@ fun t ->
     let cursor =
-      { cursor = Mdb.cursor_open t db.dbi
-      ; db = db }
+      { cursor = Mdb.cursor_open t map.dbi
+      ; map = map }
     in
     try
       let res = f cursor in
@@ -491,21 +493,21 @@ module Cursor = struct
   let abort cursor = raise (Abort (Obj.repr cursor))
 
   (* Used internally for trivial functions, not exported. *)
-  let trivial perm ?cursor (db :_ Db.t) f =
+  let trivial perm ?cursor (map :_ Map.t) f =
     match (cursor :_ t option) with
     | Some cursor ->
-      if cursor.db != db
+      if cursor.map != map
       then invalid_arg
-          "Lmdb.Cursor.fold: Got cursor for wrong db";
+          "Lmdb.Cursor.fold: Got cursor for wrong map";
       f cursor
     | None ->
-      match go perm db f with
+      match go perm map f with
       | None -> assert false
       | Some x -> x
 
-  let seek (type key value) { cursor ; db } k =
-    let module Key = (val db.key :Db.Conv.S with type t = key) in
-    let module Value = (val db.value :Db.Conv.S with type t = value) in
+  let seek (type key value) { cursor ; map } k =
+    let module Key = (val map.key :Map.Conv.S with type t = key) in
+    let module Value = (val map.value :Map.Conv.S with type t = value) in
     let ka = Key.write Bigstring.create k in
     let ka', va =
       Mdb.cursor_get cursor
@@ -518,9 +520,9 @@ module Cursor = struct
 
   let get cursor k = snd @@ seek cursor k
 
-  let seek_range (type key value) { cursor ; db } k =
-    let module Key = (val db.key :Db.Conv.S with type t = key) in
-    let module Value = (val db.value :Db.Conv.S with type t = value) in
+  let seek_range (type key value) { cursor ; map } k =
+    let module Key = (val map.key :Map.Conv.S with type t = key) in
+    let module Value = (val map.value :Map.Conv.S with type t = value) in
     let ka, va =
       Mdb.cursor_get cursor
         (Mdb.Block_option.some (Key.write Bigstring.create k))
@@ -529,9 +531,9 @@ module Cursor = struct
     in
     Key.read ka, Value.read va
 
-  let get_prim (type key value) op { cursor ; db } =
-    let module Key = (val db.key :Db.Conv.S with type t = key) in
-    let module Value = (val db.value :Db.Conv.S with type t = value) in
+  let get_prim (type key value) op { cursor ; map } =
+    let module Key = (val map.key :Map.Conv.S with type t = key) in
+    let module Value = (val map.value :Map.Conv.S with type t = value) in
     let ka, va =
       Mdb.cursor_get cursor
         Mdb.Block_option.none Mdb.Block_option.none
@@ -549,9 +551,9 @@ module Cursor = struct
 
   let count { cursor; _ } = Mdb.cursor_count cursor
 
-  let seek_dup (type key value) { cursor ; db } k v =
-    let module Key = (val db.key :Db.Conv.S with type t = key) in
-    let module Value = (val db.value :Db.Conv.S with type t = value) in
+  let seek_dup (type key value) { cursor ; map } k v =
+    let module Key = (val map.key :Map.Conv.S with type t = key) in
+    let module Value = (val map.value :Map.Conv.S with type t = value) in
     let ka = Key.write Bigstring.create k in
     let va = Value.write Bigstring.create v in
     let ka', va' =
@@ -564,9 +566,9 @@ module Cursor = struct
     assert (ka' = ka);
     assert (va' = va)
 
-  let seek_range_dup (type key value) { cursor ; db } k v =
-    let module Key = (val db.key :Db.Conv.S with type t = key) in
-    let module Value = (val db.value :Db.Conv.S with type t = value) in
+  let seek_range_dup (type key value) { cursor ; map } k v =
+    let module Key = (val map.key :Map.Conv.S with type t = key) in
+    let module Value = (val map.value :Map.Conv.S with type t = value) in
     let ka, va =
       Mdb.cursor_get cursor
         (Mdb.Block_option.some (Key.write Bigstring.create k))
@@ -575,8 +577,8 @@ module Cursor = struct
     in
     Key.read ka, Value.read va
 
-  let get_dup_prim (type value) op { cursor ; db } =
-    let module Value = (val db.value :Db.Conv.S with type t = value) in
+  let get_dup_prim (type value) op { cursor ; map } =
+    let module Value = (val map.value :Map.Conv.S with type t = value) in
     let _, va =
       Mdb.cursor_get cursor
         Mdb.Block_option.none Mdb.Block_option.none
@@ -593,8 +595,8 @@ module Cursor = struct
       Mdb.Block_option.none Mdb.Block_option.none
 
   let get_values_multiple (type value) cursor len =
-    let module Value = (val cursor.db.value :Db.Conv.S with type t = value) in
-    assert Db.Conv.Flags.(test dup_fixed cursor.db.flags);
+    let module Value = (val cursor.map.value :Map.Conv.S with type t = value) in
+    assert Map.Conv.Flags.(test dup_fixed cursor.map.flags);
     let _, first = cursor_none cursor Ops.first_dup in
     let size = Bigstring.length first in
     let values = Array.make len (Obj.magic ()) in
@@ -626,7 +628,7 @@ module Cursor = struct
 
   let get_values_from_first cursor first =
     let len = Mdb.cursor_count cursor.cursor in
-    if len > 1 && Db.Conv.Flags.(test (dup_sort + dup_fixed) cursor.db.flags)
+    if len > 1 && Map.Conv.Flags.(test (dup_sort + dup_fixed) cursor.map.flags)
     then get_values_multiple cursor len
     else begin
       let values = Array.make len first in
@@ -638,7 +640,7 @@ module Cursor = struct
 
   let get_values_from_last cursor last =
     let len = Mdb.cursor_count cursor.cursor in
-    if len > 1 && Db.Conv.Flags.(test (dup_sort + dup_fixed) cursor.db.flags)
+    if len > 1 && Map.Conv.Flags.(test (dup_sort + dup_fixed) cursor.map.flags)
     then begin
       let values = get_values_multiple cursor len in
       cursor_none cursor Ops.first_dup |> ignore;
@@ -673,9 +675,9 @@ module Cursor = struct
     first_dup c |> ignore;
     all_prim_from_first c current
 
-  let put_raw_key (type value) { cursor ; db } ~flags ka v =
-    let module Value = (val db.value :Db.Conv.S with type t = value) in
-    if Db.Conv.Flags.(test dup_sort db.flags)
+  let put_raw_key (type value) { cursor ; map } ~flags ka v =
+    let module Value = (val map.value :Map.Conv.S with type t = value) in
+    if Map.Conv.Flags.(test dup_sort map.flags)
     then begin
       let va = Value.write Bigstring.create v in
       Mdb.cursor_put cursor ka va flags
@@ -700,7 +702,7 @@ module Cursor = struct
     end
 
   let put (type key) cursor ?(flags=Flags.none) k v =
-    let module Key = (val cursor.db.key :Db.Conv.S with type t = key) in
+    let module Key = (val cursor.map.key :Map.Conv.S with type t = key) in
     let ka = Key.write Bigstring.create k in
     put_raw_key cursor ~flags ka v
 
@@ -719,7 +721,7 @@ module Cursor = struct
     Mdb.cursor_del cursor.cursor
       (if all then Flags.no_dup_data else Flags.none)
 
-  let fold_prim_all init step get_all ?cursor ~f acc db =
+  let fold_prim_all init step get_all ?cursor ~f acc map =
     let fold cursor =
       match
         try Some (init cursor)
@@ -743,18 +745,18 @@ module Cursor = struct
     in
     trivial ro
       ?cursor:(cursor :> (_, _, [ `Read ]) t option)
-      (db :> (_, _, [ `Read ]) Db.t)
+      (map :> (_, _, [ `Read ]) Map.t)
       fold
 
-  let fold_left_all ?cursor ~f acc db =
-    fold_prim_all first next_nodup get_values_from_first ?cursor ~f acc db
+  let fold_left_all ?cursor ~f acc map =
+    fold_prim_all first next_nodup get_values_from_first ?cursor ~f acc map
 
-  let fold_right_all ?cursor ~f db acc =
+  let fold_right_all ?cursor ~f map acc =
     let f acc key values = f key values acc in
-    fold_prim_all last prev_nodup get_values_from_last ?cursor ~f acc db
+    fold_prim_all last prev_nodup get_values_from_last ?cursor ~f acc map
 
-  let iter_all ?cursor ~f db =
-    fold_left_all ?cursor () db ~f:(fun () -> f)
+  let iter_all ?cursor ~f map =
+    fold_left_all ?cursor () map ~f:(fun () -> f)
 
   (* The following two operations are not exposed, due to inherent unsafety:
      - Ops.get_multiple

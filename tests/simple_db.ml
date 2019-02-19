@@ -6,11 +6,11 @@ let () =
 
   print_endline "create the map" ;
   let map =
-    Db.(create ~key:Conv.string ~value:Conv.string env) in
+    Map.(create ~key:Conv.string ~value:Conv.string env) in
 
   print_endline "put the key-value binding in the map" ;
-  Db.put map "foo" (read_line ()) ;
+  Map.put map "foo" (read_line ()) ;
 
   print_endline "get the value from the map" ;
-  let s = Db.get map "foo" in
+  let s = Map.get map "foo" in
   print_endline s ;

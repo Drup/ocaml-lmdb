@@ -14,7 +14,7 @@ let env =
   Env.create rw
     ~flags:Env.Flags.(no_subdir + no_sync + no_lock + no_mem_init)
     ~map_size:104857600
-    ~max_dbs:10
+    ~max_maps:10
     filename
 let () =
   at_exit @@ fun () ->
@@ -23,7 +23,7 @@ let () =
 
 let[@warning "-26-27"] capabilities () =
   let map =
-    Db.(create ~dup:false
+    Map.(create ~dup:false
            ~key:Conv.int32_be_as_int
            ~value:Conv.int32_be_as_int
            ~name:"Capabilities" env)
@@ -35,29 +35,29 @@ let[@warning "-26-27"] capabilities () =
   (* ignore @@ (ro :> [ `Read | `Write ] cap); <- FAILS *)
   ignore @@ Txn.go rw env_rw ?txn:None @@ fun txn_rw ->
   let txn_ro = (txn_rw :> [ `Read ] Txn.t) in
-  Db.put ~txn:txn_rw map 4 4;
-  (* Db.put ~txn:txn_ro map 4 4; <- FAILS *)
-  assert (Db.get ~txn:txn_rw map 4 = 4);
-  assert (Db.get ~txn:txn_ro map 4 = 4);
+  Map.put ~txn:txn_rw map 4 4;
+  (* Map.put ~txn:txn_ro map 4 4; <- FAILS *)
+  assert (Map.get ~txn:txn_rw map 4 = 4);
+  assert (Map.get ~txn:txn_ro map 4 = 4);
   Cursor.go ro
     ~txn:(txn_rw :> [ `Read ] Txn.t)
-    (map :> (_,_,[ `Read ]) Db.t) @@ fun cursor ->
+    (map :> (_,_,[ `Read ]) Map.t) @@ fun cursor ->
   assert (Cursor.get cursor 4 = 4);
   (* Cursor.first_dup cursor; <- FAILS *)
 ;;
 
 
 let test_map =
-  "Db",
-  let open Db in
+  "Map",
+  let open Map in
   let map =
-    Db.(create ~dup:false
+    Map.(create ~dup:false
            ~key:Conv.int32_be_as_int
            ~value:Conv.int32_be_as_int
-           ~name:"Db" env)
+           ~name:"Map" env)
   in
     [ "append(_dup)", `Quick, begin fun () ->
-      Db.drop map;
+      Map.drop map;
       let rec loop n =
         if n <= 536870912 then begin
           let rec loop_dup m =
@@ -81,10 +81,10 @@ let test_map =
   ; "put no_dup_data", `Quick, begin fun () ->
       ignore @@ Txn.go rw env @@ fun txn ->
       let map =
-        Db.(create ~dup:true ~txn
+        Map.(create ~dup:true ~txn
                ~key:Conv.int32_be_as_int
                ~value:Conv.int32_be_as_int
-               ~name:"Db.dup" env)
+               ~name:"Map.dup" env)
       in
       put ~txn map ~flags:Flags.no_dup_data 4285 0;
       check_raises "Exists" Exists
@@ -130,7 +130,7 @@ let test_cursor =
   "Cursor",
   let open Cursor in
   let map =
-    Db.(create ~dup:true
+    Map.(create ~dup:true
            ~key:Conv.int32_be_as_int
            ~value:Conv.int32_be_as_int
            ~name:"Cursor" env)
@@ -142,30 +142,30 @@ let test_cursor =
         Env.create rw
           ~flags:Env.Flags.(no_subdir + no_sync + no_lock + no_mem_init)
           ~map_size:104857600
-          ~max_dbs:10
+          ~max_maps:10
           (filename ^ "2")
       in
       check_raises "wrong txn" (Invalid_argument "Lmdb") begin fun () ->
         ignore @@ Txn.go ro (env2 :> [ `Read ] Env.t)
-          (fun txn -> Db.get ~txn map 0 |> ignore);
+          (fun txn -> Map.get ~txn map 0 |> ignore);
       end;
       let map2 =
-        Db.(create ~dup:true
+        Map.(create ~dup:true
                ~key:Conv.int32_be_as_int
                ~value:Conv.int32_be_as_int
                ~name:"Cursor.wrongmap" env)
       in
-      let map2_ro = (map2 :> (_,_,[ `Read ]) Db.t) in
-      check_raises "wrong cursor" (Invalid_argument "Lmdb.Cursor.fold: Got cursor for wrong db") begin fun () ->
+      let map2_ro = (map2 :> (_,_,[ `Read ]) Map.t) in
+      check_raises "wrong cursor" (Invalid_argument "Lmdb.Cursor.fold: Got cursor for wrong map") begin fun () ->
         ignore @@ Cursor.go ro map2_ro
-          (fun cursor -> fold_left_all ~cursor () (map :> (_,_,[ `Read ]) Db.t) ~f:(fun _ _ _ -> ()));
+          (fun cursor -> fold_left_all ~cursor () (map :> (_,_,[ `Read ]) Map.t) ~f:(fun _ _ _ -> ()));
       end;
       Env.close env2;
       Sys.remove (filename ^ "2")
     end
   ; "append(_dup)", `Quick,
     begin fun () ->
-      Db.drop map;
+      Map.drop map;
       ignore @@ go rw map ?txn:None @@ fun cursor ->
       let rec loop n =
         if n <= 536870912 then begin
@@ -346,7 +346,7 @@ let test_cursor =
   ]
 
 let test_int =
-  let open Db in
+  let open Map in
   let make_test name conv =
     name, `Quick,
     begin fun () ->

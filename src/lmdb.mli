@@ -14,15 +14,17 @@
 
     One environment may contain multiple named and one unnamed key-value stores.
     They are called {e databases} in the
+    {{:http://www.lmdb.tech/doc/starting.html}LMDB documentation}, but called
+    {e maps} in these OCaml bindings.
 
-    A single [('keyey, 'valuealue, [< `Read | `Write])] {!type: Db.t} is a key-value store mapping
+    A single [('keyey, 'valuealue, [< `Read | `Write])] {!type: Map.t} is a key-value store mapping
     OCaml values of type ['keyey] to values of type ['valuealue].
     Multiple values per key are supported on request.
 
-    Using {!Db}, we can open the unnamed db and add our first value:
+    Using {!Map}, we can open the unnamed map and add our first value:
 {[
-let db = Db.(open_existing ~key:Conv.string ~value:Conv.string env) in
-Db.put db "Bactrian camel" "Elegant and beautiful animal with two humps."
+let map = Map.(open_existing ~key:Conv.string ~value:Conv.string env) in
+Map.put map "Bactrian camel" "Elegant and beautiful animal with two humps."
 ]}
 
     {{!Txn}Transactions} and {{!Cursor}Iterators} are also available.
@@ -64,7 +66,7 @@ end
 (** {3 Permissions} *)
 
 (** This library uses [[< `Read | `Write ]] phantom types to encode the
-    read/write permissions of environments, transactions, dbs and
+    read/write permissions of environments, transactions, maps and
     cursors. The following values are used to request read-only or read-write
     permissions on environments, transactions and cursors.
 *)
@@ -80,7 +82,7 @@ val rw : [ `Read | `Write ] perm
 
 (** {2 Database} *)
 
-(** Collection of dbs stored in a single memory-mapped file. *)
+(** Collection of maps stored in a single memory-mapped file. *)
 module Env : sig
   type -'perm t constraint 'perm = [< `Read | `Write ]
 
@@ -112,11 +114,11 @@ module Env : sig
 
       @param map_size Size of the memory map. Limited by the virtual address space.
       @param max_readers Maximum number of threads/reader slots.
-      @param max_dbs Maximum number of named dbs.
+      @param max_maps Maximum number of named maps.
       @param mode The UNIX permissions to set on created files and semaphores. Default is [0o755].
   *)
   val create :
-    'perm perm -> ?max_readers:int -> ?map_size:int -> ?max_dbs:int ->
+    'perm perm -> ?max_readers:int -> ?map_size:int -> ?max_maps:int ->
     ?flags:Flags.t -> ?mode:int -> string -> 'perm t
 
 
@@ -172,8 +174,8 @@ module Txn : sig
       Here is an example incrementing a value atomically:
 {[
 go rw env begin fun txn ->
-  let v = Db.get ~txn k in
-  Db.put ~txn k (v+1) ;
+  let v = Map.get ~txn k in
+  Map.put ~txn k (v+1) ;
   v
 end
 ]}
@@ -196,16 +198,16 @@ end
 
 end
 
-(** Key-value dbs. *)
-module Db : sig
+(** Key-value maps. *)
+module Map : sig
   (** Converters to and from the internal representation of keys and values.
 
       A converter is a module with Signature {!S} containing the serialising
       {!Conv.S.write} and deserialising {!Conv.S.read} functions as well as
-      the {!Conv.S.flags} applied when the converter is used in a db.
+      the {!Conv.S.flags} applied when the converter is used in a map.
 
       For convenience every converter is is also exported as first-class value
-      so it cat be easily passed to {!Db.create} and {!Db.open_existing}.
+      so it cat be easily passed to {!Map.create} and {!Map.open_existing}.
   *)
   module Conv : sig
     (** {2 Types } *)
@@ -216,7 +218,7 @@ module Db : sig
         the database. They may point directly to a memory-mapped region of the
         database file. *)
 
-    (** Flags describing the (sorting) properties of keys and values of a db.
+    (** Flags describing the (sorting) properties of keys and values of a map.
 
         See the LMDB documentation for the meaning of these flags.
 
@@ -236,12 +238,12 @@ module Db : sig
     module type S = sig
       type t
       val flags : Flags.t
-      (** Flags to be set on a db using this converter.
+      (** Flags to be set on a map using this converter.
 
           Depending on the use of a converter as {e key} or {e value}
-          {!Db.create} and {!Db.open_existing} will select the correct set of
+          {!Map.create} and {!Map.open_existing} will select the correct set of
           flags: [_key] flags will be used for keys and [_dup] flags will be
-          used for values on dbs supporting duplicates.
+          used for values on maps supporting duplicates.
       *)
 
       val read : bigstring -> t
@@ -320,22 +322,22 @@ module Db : sig
     module Int64_le_as_int :S with type t = int
   end
 
-  (** A handle for a db from keys of type ['key] to values of type ['value]. *)
+  (** A handle for a map from keys of type ['key] to values of type ['value]. *)
   type ('key, 'value, -'perm) t
     constraint 'perm = [< `Read | `Write ]
 
   (** [create ~key ~value env]
-      open (and possibly create) a db in the environment [env].
+      open (and possibly create) a map in the environment [env].
 
       Only a single transaction may call this function at a time.
       This transaction needs to finish before any other transaction may call
       this function.
 
-      @param name if omitted the unnamed db will be opened. Otherwise make
-      sure that {! Env.create} was called with a large enough [~max_dbs].
+      @param name if omitted the unnamed map will be opened. Otherwise make
+      sure that {! Env.create} was called with a large enough [~max_maps].
       @param key Converter for keys
       @param value Converter for values
-      @raise Invalid_argument if an existing db doesn't support duplicates,
+      @raise Invalid_argument if an existing map doesn't support duplicates,
       but duplicates where requested.
   *)
   val create :
@@ -346,8 +348,8 @@ module Db : sig
     ?name       :string ->
     ([> `Read | `Write ] as 'perm) Env.t -> ('key, 'value, 'perm) t
 
-  (** [open_existing env] is like [create], but only opens already existing dbs.
-      @raise Not_found if the db doesn't exist.
+  (** [open_existing env] is like [create], but only opens already existing maps.
+      @raise Not_found if the map doesn't exist.
   *)
   val open_existing :
     ?dup        :bool ->
@@ -358,8 +360,8 @@ module Db : sig
     ([> `Read ] as 'perm) Env.t ->
     ('key, 'value, 'perm) t
 
-  (** [get db key] returns the first value associated to [key].
-      @raise Not_found if the key is not in the db.
+  (** [get map key] returns the first value associated to [key].
+      @raise Not_found if the key is not in the map.
   *)
   val get : ('key, 'value, [> `Read ]) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'value
 
@@ -367,12 +369,12 @@ module Db : sig
   module Flags : sig
     include Flags
     val no_overwrite : t
-    (** Raise {!exception: Exists} if the key already exists no matter whether the db
+    (** Raise {!exception: Exists} if the key already exists no matter whether the map
         supports duplicates.
     *)
 
     val no_dup_data : t
-    (** Only for dbs supporting duplicates: Don't add the value to an already
+    (** Only for maps supporting duplicates: Don't add the value to an already
         existing key if this value is already part of this key.
     *)
 
@@ -387,25 +389,25 @@ module Db : sig
     *)
   end
 
-  (** [put db key value] adds [value] to [key].
+  (** [put map key value] adds [value] to [key].
 
-      For a db not supporting duplicates an existing value is overwritten.
-      For a db supporting duplicates the value is added to the key.
+      For a map not supporting duplicates an existing value is overwritten.
+      For a map supporting duplicates the value is added to the key.
 
       @param flags {!Flags}
-      @raise Exists if the key or key-value pair is already in the db and
+      @raise Exists if the key or key-value pair is already in the map and
       {! Flags.no_overwrite} or {! Flags.no_dup_data} was passed in
       [flags].
   *)
   val put : ('key, 'value, ([> `Read | `Write ] as 'perm)) t ->
     ?txn:'perm Txn.t -> ?flags:Flags.t -> 'key -> 'value -> unit
 
-  (** [remove db key] removes [key] from [db].
+  (** [remove map key] removes [key] from [map].
 
       @param value Only the specified value is removed.
       If not provided, all the values of [key] and [key] itself are removed.
 
-      @raise Not_found if the key is not in the db.
+      @raise Not_found if the key is not in the map.
   *)
   val remove : ('key, 'value, ([> `Read | `Write ] as 'perm)) t ->
     ?txn:'perm Txn.t -> ?value:'value -> 'key -> unit
@@ -415,34 +417,34 @@ module Db : sig
 
   val stats : ?txn: [> `Read ] Txn.t -> ('key, 'value, [> `Read ]) t -> Mdb.stats
 
-  (** [drop ?delete db] Empties [db].
-      @param delete If [true] [db] is also deleted from the environment
-      and the handle [db] invalidated. *)
+  (** [drop ?delete map] Empties [map].
+      @param delete If [true] [map] is also deleted from the environment
+      and the handle [map] invalidated. *)
   val drop : ?txn: ([> `Read | `Write ] as 'perm) Txn.t -> ?delete:bool ->
     ('key, 'value, 'perm) t -> unit
 
-  (** [compare_key db ?txn a b]
-     Compares [a] and [b] as if they were keys in [db]. *)
+  (** [compare_key map ?txn a b]
+     Compares [a] and [b] as if they were keys in [map]. *)
   val compare_key : ('key, 'value, [> `Read ]) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'key -> int
 
-  (** [compare db ?txn a b] Same as [compare_key]. *)
+  (** [compare map ?txn a b] Same as [compare_key]. *)
   val compare : ('key, 'value, [> `Read ]) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'key -> int
 
-  (** [compare_val db ?txn a b]
-     Compares [a] and [b] as if they were values in a [dup_sort] [db]. *)
+  (** [compare_val map ?txn a b]
+     Compares [a] and [b] as if they were values in a [dup_sort] [map]. *)
   val compare_val : ('key, 'value, [> `Read ]) t -> ?txn:[> `Read ] Txn.t -> 'value -> 'value -> int
 end
 
-(** Iterators over dbs. *)
+(** Iterators over maps. *)
 module Cursor : sig
-  (** A cursor allows to iterate manually on the db.
+  (** A cursor allows to iterate manually on the map.
       Every cursor implicitely uses a transaction.
   *)
 
   type ('key, 'value, -'perm) t
     constraint 'perm = [< `Read | `Write ]
 
-  (** [go perm db ?txn f] makes a cursor in the transaction [txn] using the
+  (** [go perm map ?txn f] makes a cursor in the transaction [txn] using the
       function [f cursor].
 
       The function [f] will receive the [cursor].
@@ -450,9 +452,9 @@ module Cursor : sig
       The cursor inherits the permissions of the transaction.
       The cursor should not be leaked outside of [f].
 
-      Here is an example that returns the first 5 elements of a [db]:
+      Here is an example that returns the first 5 elements of a [map]:
       {[
-go ro db begin fun c ->
+go ro map begin fun c ->
 let h = first c in
 let rec aux i =
   if i < 5 then next c :: aux (i+1)
@@ -466,7 +468,7 @@ end
       created before calling [f] and be committed after [f] returns.
       Such a transient transaction may be aborted using {! abort}.
   *)
-  val go : 'perm perm -> ?txn:'perm Txn.t -> ('key, 'value, 'perm) Db.t ->
+  val go : 'perm perm -> ?txn:'perm Txn.t -> ('key, 'value, 'perm) Map.t ->
     (('key, 'value, 'perm) t -> 'a) -> 'a option
 
   (** [abort cursor] aborts [cursor] and the current [go] function,
@@ -483,36 +485,36 @@ end
   val iter_all :
     ?cursor:('key, 'value, [> `Read ] as 'perm) t ->
     f:('key -> 'value array -> unit) ->
-    ('key, 'value, 'perm) Db.t ->
+    ('key, 'value, 'perm) Map.t ->
     unit
 
   val fold_left_all :
     ?cursor:('key, 'value, [> `Read ] as 'perm) t ->
     f:('a -> 'key -> 'value array -> 'a) -> 'a ->
-    ('key, 'value, 'perm) Db.t ->
+    ('key, 'value, 'perm) Map.t ->
     'a
 
   val fold_right_all :
     ?cursor:('key, 'value, [> `Read ] as 'perm) t ->
     f:('key -> 'value array -> 'a -> 'a) ->
-    ('key, 'value, 'perm) Db.t ->
+    ('key, 'value, 'perm) Map.t ->
     'a -> 'a
 
 
   (** {2 Modification} *)
 
-  (** {!Db.Flags} *)
-  module Flags : module type of Db.Flags
+  (** {!Map.Flags} *)
+  module Flags : module type of Map.Flags
 
   (** [put cursor key value] adds [value] to [key] and moves the cursor to
       its position.
 
-      For a db not supporting duplicates an existing value is overwritten.
-      For a db supporting duplicates the value is added to the key.
+      For a map not supporting duplicates an existing value is overwritten.
+      For a map supporting duplicates the value is added to the key.
 
       @param flags {!Flags}
-      @raise Exists if the key or key-value pair is already in the db and
-      {! Db.Flags.no_overwrite} or {! Db.Flags.no_dup_data} was passed in
+      @raise Exists if the key or key-value pair is already in the map and
+      {! Map.Flags.no_overwrite} or {! Map.Flags.no_dup_data} was passed in
       [flags].
   *)
   val put : ('key, 'value, [> `Read | `Write ]) t ->
@@ -657,8 +659,8 @@ end
 (** {2 Error reporting} *)
 
 exception Exists
-(** Raised when adding already existing key or key-value pair to a db with
-    {! Db.Flags.no_overwrite} or {! Db.Flags.no_dup_data}
+(** Raised when adding already existing key or key-value pair to a map with
+    {! Map.Flags.no_overwrite} or {! Map.Flags.no_dup_data}
     or when trying to [put ~flags:Flags.append(_dup)] non-sorted data.
 *)
 
