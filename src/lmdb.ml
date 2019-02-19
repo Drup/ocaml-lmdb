@@ -1,4 +1,5 @@
 module Mdb = Lmdb_bindings
+module type Flags = Mdb.Flags
 module Bigstring = Bigstringaf
 
 exception Not_found = Not_found
@@ -61,7 +62,6 @@ module Env = struct
   let set_map_size = Mdb.env_set_mapsize
 
   let path = Mdb.env_get_path
-
   let sync ?(force=false) env = Mdb.env_sync env force
 
   let fd = Mdb.env_get_fd
@@ -136,324 +136,487 @@ struct
       | Some x -> x
 end
 
+module Db = struct
+  module Conv = struct
+    type bigstring = Bigstring.t
 
-module PutFlags = Mdb.PutFlags
+    module Flags = Mdb.DbiFlags
 
-module Flags = Mdb.DbiFlags
-
-type buffer = Bigstring.t
-
-module Values = struct
-
-  module Flags = Flags
-
-  type db_val = buffer
-
-  module type S = sig
-    type t
-    val default_flags : Flags.t
-    val read : db_val -> t
-    val write : (int -> db_val) -> t -> db_val
-  end
-
-  module Int : S with type t = int = struct
-    type t = int
-    let default_flags = Flags.none
-
-    let write, read =
-      match Sys.big_endian, (Sys.int_size + 7) / 8 * 8 with
-      | true, 32 ->
-        (fun alloc x ->
-           let a = alloc 4 in
-           Bigstring.set_int32_be a 0 Int32.(of_int x);
-           a),
-        (fun a -> Bigstring.get_int32_be a 0 |> Int32.to_int)
-      | true, 64 ->
-        (fun alloc x ->
-           let a = alloc 8 in
-           Bigstring.set_int64_be a 0 Int64.(of_int x);
-           a),
-        (fun a -> Bigstring.get_int64_be a 0 |> Int64.to_int)
-      | false, 32 ->
-        (fun alloc x ->
-           let a = alloc 4 in
-           Bigstring.set_int32_le a 0 Int32.(of_int x);
-           a),
-        (fun a -> Bigstring.get_int32_le a 0 |> Int32.to_int)
-      | false, 64 ->
-        (fun alloc x ->
-           let a = alloc 8 in
-           Bigstring.set_int64_le a 0 Int64.(of_int x);
-           a),
-        (fun a -> Bigstring.get_int64_le a 0 |> Int64.to_int)
-      | _ -> failwith "Lmdb: Unsupported integer size"
-  end
-
-  module String : S with type t = string = struct
-    type t = string
-    let default_flags = Flags.none
-
-    let write, read =
-      (fun alloc s ->
-         let len = String.length s in
-         let a = alloc len in
-         Bigstring.blit_from_string s ~src_off:0 a ~dst_off:0 ~len;
-         a),
-      (fun a -> Bigstring.substring a ~off:0 ~len:(Bigstring.length a))
-  end
-
-
-  module Elt = struct
-    module Int = Int
-    module String = String
-  end
-
-  module Key = struct
-    module Int = struct
-      include Elt.Int
-      let default_flags = Flags.integer_key
+    module type S = sig
+      type t
+      val flags : Flags.t
+      val read : Bigstring.t -> t
+      val write : (int -> Bigstring.t) -> t -> Bigstring.t
     end
-    module String = String
+
+    type 'a t = (module S with type t = 'a)
+
+    let is_int_size n = n = Mdb.sizeof_int || n = Mdb.sizeof_size_t
+
+    module Int32_be = struct
+      type t = Int32.t
+      let flags =
+        if Sys.big_endian && is_int_size 4
+        then Flags.(integer_key + integer_dup + dup_fixed)
+        else Flags.(dup_fixed)
+      let read a = Bigstring.get_int32_be a 0
+      let write alloc x =
+        let a = alloc 4 in
+        Bigstring.set_int32_be a 0 x;
+        a
+    end
+
+    module Int32_le = struct
+      type t = Int32.t
+      let flags =
+        if not Sys.big_endian && is_int_size 4
+        then Flags.(integer_key + integer_dup + dup_fixed)
+        else Flags.(reverse_key + reverse_dup + dup_fixed)
+      let read a = Bigstring.get_int32_le a 0
+      let write alloc x =
+        let a = alloc 4 in
+        Bigstring.set_int32_le a 0 x;
+        a
+    end
+
+    module Int32_as_int (Conv :S with type t = Int32.t) : S with type t = int
+    = struct
+      type t = int
+      let flags = Conv.flags
+      let read =
+        if Sys.int_size >= 32
+        then fun a ->
+          Conv.read a |> Int32.to_int
+        else fun a ->
+          let ix = Conv.read a in
+          let i = Int32.to_int ix in
+          if Int32.of_int i = ix
+          then i
+          else invalid_arg "Lmdb: Integer truncated"
+      let write =
+        if Sys.int_size <= 32
+        then fun alloc i ->
+          Conv.write alloc @@ Int32.of_int i
+        else fun alloc i ->
+          let ix = Int32.of_int i in
+          if Int32.to_int ix = i
+          then Conv.write alloc ix
+          else invalid_arg "Lmdb: Integer truncated"
+    end
+
+    module Int32_be_as_int = Int32_as_int (Int32_be)
+    module Int32_le_as_int = Int32_as_int (Int32_le)
+
+    module Int64_be = struct
+      type t = Int64.t
+      let flags =
+        if Sys.big_endian && is_int_size 8
+        then Flags.(integer_key + integer_dup + dup_fixed)
+        else Flags.(dup_fixed)
+      let read a = Bigstring.get_int64_be a 0
+      let write alloc x =
+        let a = alloc 8 in
+        Bigstring.set_int64_be a 0 x;
+        a
+    end
+
+    module Int64_le = struct
+      type t = Int64.t
+      let flags =
+        if not Sys.big_endian && is_int_size 8
+        then Flags.(integer_key + integer_dup + dup_fixed)
+        else Flags.(reverse_key + reverse_dup + dup_fixed)
+      let read a = Bigstring.get_int64_le a 0
+      let write alloc x =
+        let a = alloc 8 in
+        Bigstring.set_int64_le a 0 x;
+        a
+    end
+
+    module Int64_as_int (Conv :S with type t = Int64.t) :S with type t = int
+    = struct
+      type t = int
+      let flags = Conv.flags
+      let read =
+        if Sys.int_size >= 64
+        then fun a ->
+          Conv.read a |> Int64.to_int
+        else fun a ->
+          let ix = Conv.read a in
+          let i = Int64.to_int ix in
+          if Int64.of_int i = ix
+          then i
+          else invalid_arg "Lmdb: Integer truncated"
+      let write alloc i =
+          Conv.write alloc @@ Int64.of_int i
+    end
+
+    module Int64_be_as_int = Int64_as_int (Int64_be)
+    module Int64_le_as_int = Int64_as_int (Int64_le)
+    let int32_be        = (module Int32_be        :S with type t = Int32.t)
+    let int32_le        = (module Int32_le        :S with type t = Int32.t)
+    let int64_be        = (module Int64_be        :S with type t = Int64.t)
+    let int64_le        = (module Int64_le        :S with type t = Int64.t)
+    let int32_be_as_int = (module Int32_be_as_int :S with type t = int)
+    let int32_le_as_int = (module Int32_le_as_int :S with type t = int)
+    let int64_be_as_int = (module Int64_be_as_int :S with type t = int)
+    let int64_le_as_int = (module Int64_le_as_int :S with type t = int)
+
+    module String = struct
+      type t = string
+      let flags = Flags.none
+      let read a = Bigstring.substring a ~off:0 ~len:(Bigstring.length a)
+      let write alloc s =
+        let len = String.length s in
+        let a = alloc len in
+        Bigstring.blit_from_string s ~src_off:0 a ~dst_off:0 ~len;
+        a
+    end
+    let string = (module String :S with type t = string)
+
+    module Bigstring = struct
+      type t = Bigstring.t
+      let flags = Flags.none
+      let read b = b
+      let write _ b = b
+    end
+    let bigstring = (module Bigstring :S with type t = bigstring)
   end
 
-end
-
-
-module Make (Key : Values.S) (Elt : Values.S) = struct
-
-  let def_flags = Flags.(Key.default_flags + Elt.default_flags)
-
-  let has_dup_flag = Flags.(test dup_sort) def_flags
-
-  type -'perm t = {env : 'perm Env.t ; db : Mdb.dbi }
+  type ('k, 'v, -'perm) t =
+    { env               :'perm Env.t
+    ; mutable dbi       :Mdb.dbi
+    ; flags             :Mdb.DbiFlags.t
+    ; key               :(module Conv.S with type t = 'k)
+    ; value             :(module Conv.S with type t = 'v)
+    }
     constraint 'perm = [< `Read | `Write ]
 
-  type key = Key.t
-  type elt = Elt.t
-
-  let write f v =
-    f Bigstring.create v
-
-  let create ?(create=true) env name =
+  let create
+      ?(dup=false)
+      (type key value)
+      ~(key     :key Conv.t)
+      ~(value   :value Conv.t)
+      ?(txn     :'perm Txn.t option)
+      ?(name    :string option)
+      (env      :'perm Env.t)
+    :(key, value, 'perm) t
+    =
+    let module Key = (val key) in
+    let module Value = (val value) in
     let flags =
-      if create
-      then Flags.(create + def_flags)
-      else def_flags
+      let open Conv.Flags in
+      create +
+      Key.flags * (reverse_key + integer_key) +
+      match dup with
+      | false -> Conv.Flags.none
+      | true ->
+        dup_sort +
+        Value.flags * (dup_fixed + integer_dup + reverse_dup)
     in
-    let f txn = Mdb.dbi_open txn (Some name) flags in
-    let dbi =
-      if create
-      then Txn.trivial rw (env :> [ `Read | `Write ] Env.t) f
-      else Txn.trivial ro (env :> [ `Read ] Env.t) f
+    let dbi, flags =
+      Txn.trivial rw env ?txn @@ fun txn ->
+      let dbi = Mdb.dbi_open txn name flags in
+      let flags = Mdb.dbi_flags txn dbi in
+      begin match dup with
+        | true when not (Conv.Flags.(test dup_sort) flags) ->
+          invalid_arg "Lmdb.Db.create: duplicates not supported on this db"
+        | true | false -> ()
+      end;
+      dbi, flags
     in
-    (* We do not put a finaliser here, as it would break with Mdb.drop.
-       Slight memory leak, but nothing terrible. *)
-    (* Gc.finalise Mdb.dbi_close env !@db *)
-    { env ; db = dbi }
+    let db_t = { env; dbi; flags; key; value } in
+    Gc.finalise
+      (fun {env; dbi; _} -> if dbi != Mdb.invalid_dbi then Mdb.dbi_close env dbi)
+      db_t;
+    db_t
 
-  let stats { env ; db } =
-    Txn.trivial ro (env :> [ `Read ] Env.t) (fun t ->
-      Mdb.dbi_stat t db
-    )
+  let open_existing
+      ?(dup=false)
+      (type key value)
+      ~(key     :key Conv.t)
+      ~(value   :value Conv.t)
+      ?(txn     :_ Txn.t option)
+      ?(name    :string option)
+      (env      :'perm Env.t)
+    :(key, value, 'perm) t
+    =
+    let dbi, flags =
+      Txn.trivial ro
+        (env :> [ `Read ] Env.t)
+        ?txn:(txn :> [ `Read ] Txn.t option) @@ fun txn ->
+      let dbi = Mdb.dbi_open txn name Mdb.DbiFlags.none in
+      let flags = Mdb.dbi_flags txn dbi in
+      begin match dup with
+        | true when not (Conv.Flags.(test dup_sort) flags) ->
+          invalid_arg "Lmdb.Db.create: duplicates not supported on this db"
+        | true | false -> ()
+      end;
+      dbi, flags
+    in
+    let db_t = { env; dbi; flags; key; value } in
+    Gc.finalise
+      (fun {env; dbi; _} -> if dbi != Mdb.invalid_dbi then Mdb.dbi_close env dbi)
+      db_t;
+    db_t
 
-  let _flags { env ; db } =
-    Txn.trivial ro env (fun t ->
-      Mdb.dbi_flags t db
-    )
-
-  let drop ?(delete=false) { env ; db } =
-    Txn.trivial rw env (fun t ->
-      Mdb.drop t db delete
-    )
-
-  let get { db ; env } ?txn k =
+  let stats ?txn {env; dbi; _} =
     Txn.trivial ro
       ?txn:(txn :> [ `Read ] Txn.t option)
-      (env :> [ `Read ] Env.t) (fun t ->
-        Mdb.get t db (write Key.write k) |> Elt.read)
+      (env :> [ `Read ] Env.t)
+    @@ fun txn ->
+    Mdb.dbi_stat txn dbi
 
-  let put { db ; env } ?txn ?(flags=PutFlags.none) k v =
-    Txn.trivial rw ?txn env (fun t ->
-      Mdb.put t db
-        (write Key.write k)
-        (write Elt.write v)
-        flags
-    )
+  let _flags ?txn {env; dbi; _} =
+    Txn.trivial ro env ?txn @@ fun txn ->
+    Mdb.dbi_flags txn dbi
 
-  let append db ?txn ?(flags=PutFlags.none) k v =
-    let flags =
-      let open PutFlags in
-      flags +
-      if has_dup_flag then PutFlags.append_dup else PutFlags.append
-    in
-    put db ?txn ~flags k v
+  let drop ?txn ?(delete=false) ({dbi ;env ;_ } as db) =
+    if delete then db.dbi <- Mdb.invalid_dbi;
+    Txn.trivial rw ?txn env @@ fun txn ->
+    Mdb.drop txn dbi delete
 
-  let remove { db ; env } ?txn ?elt k =
-    Txn.trivial rw ?txn env (fun t ->
-      let va = match elt with
-        | None -> Mdb.Block_option.none
-        | Some value ->
-          Mdb.Block_option.some @@ Elt.write Bigstring.create value
+  let get (type key value) db ?txn k =
+    let module Key = (val db.key :Conv.S with type t = key) in
+    let module Value = (val db.value :Conv.S with type t = value) in
+    Txn.trivial ro
+      ?txn:(txn :> [ `Read ] Txn.t option)
+      (db.env :> [ `Read ] Env.t)
+    @@ fun txn ->
+    Mdb.get txn db.dbi (Key.write Bigstring.create k)
+    |> Value.read
+
+  module Flags = Mdb.PutFlags
+
+  let put (type key value) db ?txn ?(flags=Flags.none) k v =
+    let module Key = (val db.key :Conv.S with type t = key) in
+    let module Value = (val db.value :Conv.S with type t = value) in
+    if Conv.Flags.(test dup_sort db.flags)
+    then begin
+      let ka = Key.write Bigstring.create k in
+      let va = Value.write Bigstring.create v in
+      Txn.trivial rw ?txn db.env @@ fun txn ->
+      Mdb.put txn db.dbi ka va flags
+    end
+    else begin
+      let ka = Key.write Bigstring.create k in
+      Txn.trivial rw ?txn db.env @@ fun txn ->
+      let va_opt = ref Mdb.Block_option.none in
+      let alloc len =
+        if Mdb.Block_option.is_some !va_opt then
+          invalid_arg "Lmdb: converting function tried to allocate twice.";
+        va_opt :=
+          Mdb.Block_option.some @@
+          Mdb.put_reserve txn db.dbi ka len flags;
+        Mdb.Block_option.get_unsafe !va_opt
       in
-      Mdb.del t db
-        (write Key.write k)
-        va
-    )
+      let va = Value.write alloc v in
+      if Mdb.Block_option.is_some !va_opt
+      then begin
+        if Mdb.Block_option.get_unsafe !va_opt != va then
+          invalid_arg "Lmdb: converting function allocated, but returned different buffer."
+      end
+      else Mdb.put txn db.dbi ka va flags
+    end
 
-  let compare_key { db ; env } ?txn x y =
+  let remove (type key value) db ?txn ?value k =
+    let module Key = (val db.key :Conv.S with type t = key) in
+    let ka = Key.write Bigstring.create k in
+    let va = match value with
+      | None -> Mdb.Block_option.none
+      | Some value ->
+        let module Value = (val db.value :Conv.S with type t = value) in
+        Mdb.Block_option.some @@ Value.write Bigstring.create value
+    in
+    Txn.trivial rw ?txn db.env @@ fun txn ->
+    Mdb.del txn db.dbi ka va
+
+  let compare_key (type key) db ?txn x y =
+    let module Key = (val db.key :Conv.S with type t = key) in
+    let xa = Key.write Bigstring.create x in
+    let ya = Key.write Bigstring.create y in
     Txn.trivial ro
       ?txn:(txn :> [ `Read ] Txn.t option)
-      (env :> [ `Read ] Env.t) @@ fun txn ->
-    Mdb.cmp txn db
-      (write Key.write x)
-      (write Key.write y)
+      (db.env :> [ `Read ] Env.t)
+    @@ fun txn ->
+    Mdb.cmp txn db.dbi xa ya
 
-  let compare_elt { db ; env } ?txn :elt -> elt -> int =
-    if not has_dup_flag then
-      invalid_arg "Lmdb: elements are only comparable in a dup_sort db";
+  let compare_val (type value) db ?txn =
+    let module Value = (val db.value :Conv.S with type t = value) in
     fun x y ->
+    let xa = Value.write Bigstring.create x in
+    let ya = Value.write Bigstring.create y in
     Txn.trivial ro
       ?txn:(txn :> [ `Read ] Txn.t option)
-      (env :> [ `Read ] Env.t) @@ fun txn ->
-    Mdb.dcmp txn db
-      (write Elt.write x)
-      (write Elt.write y)
+      (db.env :> [ `Read ] Env.t)
+    @@ fun txn ->
+    Mdb.dcmp txn db.dbi xa ya
 
   let compare = compare_key
-
-  module Cursor = struct
-
-    type -'perm t = 'perm Mdb.cursor constraint 'perm = [< `Read | `Write ]
-
-    let go rw ?txn db f =
-      Txn.trivial rw ?txn db.env @@ fun txn ->
-      let cursor : _ t = Mdb.cursor_open txn db.db in
-      try
-        let res = f cursor in
-        Mdb.cursor_close cursor ;
-        res
-      with exn -> Mdb.cursor_close cursor ; raise exn
-
-    let put cursor ?(flags=PutFlags.none) k v =
-      Mdb.cursor_put cursor
-        (write Key.write k)
-        (write Elt.write v)
-        flags
-
-    let put_here cursor ?(flags=PutFlags.none) k v =
-      put ~flags:PutFlags.(current + flags) cursor k v
-
-    let remove cursor ?(all=false) () =
-      let flag =
-        if all
-        then
-          if has_dup_flag then PutFlags.no_dup_data
-          else raise @@ Invalid_argument (Printf.sprintf
-                "Lmdb.Cursor.del: Optional argument ~all unsuported: \
-                 this database does not have the dupsort flag enabled.")
-        else PutFlags.none
-      in
-      Mdb.cursor_del cursor flag
-
-    let get_prim op cursor =
-      let k,v =
-      Mdb.cursor_get cursor
-        Mdb.Block_option.none
-        Mdb.Block_option.none
-        op
-      in
-      Key.read k, Elt.read v
-
-    let get = get_prim Mdb.get_current
-    let first = get_prim Mdb.first
-    let last = get_prim Mdb.last
-    let next = get_prim Mdb.next
-    let prev = get_prim Mdb.prev
-
-    let seek_prim op cursor k =
-      let _,v =
-        Mdb.cursor_get cursor
-          (Mdb.Block_option.some @@ write Key.write k)
-          Mdb.Block_option.none
-          op
-      in
-      Elt.read v
-
-    let seek = seek_prim Mdb.set
-    let seek_range = seek_prim Mdb.set_range
-
-    let test_dup s f op cursor =
-      if has_dup_flag then f op cursor
-      else raise @@ Invalid_argument (Printf.sprintf
-            "Lmdb.Cursor.%s: Operation unsuported: this database does not have the \
-             dupsort flag enabled." s)
-
-    let first_dup = test_dup "first_dup" get_prim Mdb.first_dup
-    let last_dup = test_dup "last_dup" get_prim Mdb.last_dup
-    let next_dup = test_dup "next_dup" get_prim Mdb.next_dup
-    let prev_dup = test_dup "prev_dup" get_prim Mdb.prev_dup
-
-    let seek_dup = test_dup "seek_dup" seek_prim Mdb.get_both
-    let seek_range_dup = test_dup "seek_range_dup" seek_prim Mdb.get_both_range
-
-    (* The following two operations are not exposed, due to inherent unsafety:
-       - Mdb.GET_MULTIPLE
-       - Mdb.NEXT_MULTIPLE
-    *)
-
-  end
-
 end
 
-module Db = Make (Values.Key.String) (Values.Elt.String)
-module IntDb = Make (Values.Key.Int) (Values.Elt.String)
+module Cursor = struct
 
+  module Ops = Mdb.Ops
 
-module type S = sig
+  module Flags = Mdb.PutFlags
 
-  type -'perm t constraint 'perm = [< `Read | `Write ]
+  type ('k, 'v, -'perm) t =
+    { cursor: 'perm Mdb.cursor
+    ; db: ('k, 'v, 'perm) Db.t }
+    constraint 'perm = [< `Read | `Write ]
 
-  type key
-  type elt
+  exception Abort of Obj.t
 
-  val create : ?create:bool -> ([ `Read | `Write ] as 'perm) Env.t -> string -> 'perm t
-  val get : [> `Read ] t -> ?txn:[> `Read] Txn.t -> key -> elt
-  val put : [> `Read | `Write ] t -> ?txn:[> `Read | `Write] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
-  val append : [> `Read | `Write ] t -> ?txn:[> `Read | `Write] Txn.t -> ?flags:PutFlags.t -> key -> elt -> unit
-  val remove : [> `Read | `Write ] t -> ?txn:[> `Read | `Write] Txn.t -> ?elt:elt -> key -> unit
+  let go perm ?txn (db :_ Db.t) f =
+    Txn.trivial perm db.env ?txn @@ fun t ->
+    let cursor =
+      { cursor = Mdb.cursor_open t db.dbi
+      ; db = db }
+    in
+    try
+      let res = f cursor in
+      Mdb.cursor_close cursor.cursor;
+      Some res
+    with
+    | Abort c when c == Obj.repr cursor ->
+      Mdb.cursor_close cursor.cursor;
+      if txn = None
+      then (Mdb.txn_abort t; None)
+      else invalid_arg "Lmdb.Cursor.abort: won't abort enclosing transaction."
+    | exn ->
+      Mdb.cursor_close cursor.cursor;
+      raise exn
 
-  module Cursor : sig
-    type -'perm db constraint 'perm = [< `Read | `Write ]
-    type -'a t constraint 'a = [< `Read | `Write ]
+  let abort cursor = raise (Abort (Obj.repr cursor))
 
-    val go : 'perm perm -> ?txn:'perm Txn.t -> 'perm db -> ('perm t -> 'a) -> 'a
+  let seek (type key value) { cursor ; db } k =
+    let module Key = (val db.key :Db.Conv.S with type t = key) in
+    let module Value = (val db.value :Db.Conv.S with type t = value) in
+    let ka = Key.write Bigstring.create k in
+    let ka', va =
+      Mdb.cursor_get cursor
+        (Mdb.Block_option.some ka)
+        Mdb.Block_option.none
+        Ops.set
+    in
+    assert (ka' = ka);
+    k, Value.read va
 
-    val get : [> `Read ] t -> key * elt
-    val put : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
-    val put_here : [> `Read | `Write ] t -> ?flags:PutFlags.t -> key -> elt -> unit
-    val remove : [> `Read | `Write ] t -> ?all:bool -> unit -> unit
+  let get cursor k = snd @@ seek cursor k
 
-    val first : [> `Read ] t -> key * elt
-    val last : [> `Read ] t -> key * elt
-    val next : [> `Read ] t -> key * elt
-    val prev : [> `Read ] t -> key * elt
+  let seek_range (type key value) { cursor ; db } k =
+    let module Key = (val db.key :Db.Conv.S with type t = key) in
+    let module Value = (val db.value :Db.Conv.S with type t = value) in
+    let ka, va =
+      Mdb.cursor_get cursor
+        (Mdb.Block_option.some (Key.write Bigstring.create k))
+        Mdb.Block_option.none
+        Ops.set_range
+    in
+    Key.read ka, Value.read va
 
-    val seek : [> `Read ] t -> key -> elt
-    val seek_range : [> `Read ] t -> key -> elt
+  let get_prim (type key value) op { cursor ; db } =
+    let module Key = (val db.key :Db.Conv.S with type t = key) in
+    let module Value = (val db.value :Db.Conv.S with type t = value) in
+    let ka, va =
+      Mdb.cursor_get cursor
+        Mdb.Block_option.none Mdb.Block_option.none
+        op
+    in
+    Key.read ka, Value.read va
 
-    val first_dup : [> `Read ] t -> key * elt
-    val last_dup : [> `Read ] t -> key * elt
-    val next_dup : [> `Read ] t -> key * elt
-    val prev_dup : [> `Read ] t -> key * elt
+  let current    c = get_prim Ops.get_current c
+  let first      c = get_prim Ops.first c
+  let last       c = get_prim Ops.last c
+  let next       c = get_prim Ops.next c
+  let prev       c = get_prim Ops.prev c
 
-    val seek_dup : [> `Read ] t -> key -> elt
-    val seek_range_dup : [> `Read ] t -> key -> elt
+  let count { cursor; _ } = Mdb.cursor_count cursor
 
-  end with type -'perm db := 'perm t
+  let seek_dup (type key value) { cursor ; db } k v =
+    let module Key = (val db.key :Db.Conv.S with type t = key) in
+    let module Value = (val db.value :Db.Conv.S with type t = value) in
+    let ka = Key.write Bigstring.create k in
+    let va = Value.write Bigstring.create v in
+    let ka', va' =
+      Mdb.cursor_get
+        cursor
+        (Mdb.Block_option.some ka)
+        (Mdb.Block_option.some va)
+        Ops.get_both
+    in
+    assert (ka' = ka);
+    assert (va' = va)
 
-  val stats : [> `Read ] t -> Mdb.stats
-  val drop : ?delete:bool -> [> `Read | `Write ] t -> unit
-  val compare_key : [> `Read ] t -> ?txn:[> `Read ] Txn.t -> key -> key -> int
-  val compare : [> `Read ] t -> ?txn:[> `Read ] Txn.t -> key -> key -> int
-  val compare_elt : [> `Read ] t -> ?txn:[> `Read ] Txn.t -> elt -> elt -> int
+  let seek_range_dup (type key value) { cursor ; db } k v =
+    let module Key = (val db.key :Db.Conv.S with type t = key) in
+    let module Value = (val db.value :Db.Conv.S with type t = value) in
+    let ka, va =
+      Mdb.cursor_get cursor
+        (Mdb.Block_option.some (Key.write Bigstring.create k))
+        (Mdb.Block_option.some (Value.write Bigstring.create v))
+        Ops.get_both_range
+    in
+    Key.read ka, Value.read va
+
+  let get_dup_prim (type value) op { cursor ; db } =
+    let module Value = (val db.value :Db.Conv.S with type t = value) in
+    let _, va =
+      Mdb.cursor_get cursor
+        Mdb.Block_option.none Mdb.Block_option.none
+        op
+    in
+    Value.read va
+
+  let first_dup c = get_dup_prim Ops.first_dup c
+  let last_dup  c = get_dup_prim Ops.last_dup c
+  let next_dup  c = get_dup_prim Ops.next_dup c
+  let prev_dup  c = get_dup_prim Ops.prev_dup c
+
+  let put_raw_key (type value) { cursor ; db } ~flags ka v =
+    let module Value = (val db.value :Db.Conv.S with type t = value) in
+    if Db.Conv.Flags.(test dup_sort db.flags)
+    then begin
+      let va = Value.write Bigstring.create v in
+      Mdb.cursor_put cursor ka va flags
+    end
+    else begin
+      let va_opt = ref Mdb.Block_option.none in
+      let alloc len =
+        if Mdb.Block_option.is_some !va_opt then
+          invalid_arg "Lmdb: converting function tried to allocate twice.";
+        va_opt :=
+          Mdb.Block_option.some @@
+          Mdb.cursor_put_reserve cursor ka len flags;
+        Mdb.Block_option.get_unsafe !va_opt
+      in
+      let va = Value.write alloc v in
+      if Mdb.Block_option.is_some !va_opt
+      then begin
+        if Mdb.Block_option.get_unsafe !va_opt != va then
+          invalid_arg "Lmdb: converting function allocated, but returned different buffer."
+      end
+      else Mdb.cursor_put cursor ka va flags
+    end
+
+  let put (type key) cursor ?(flags=Flags.none) k v =
+    let module Key = (val cursor.db.key :Db.Conv.S with type t = key) in
+    let ka = Key.write Bigstring.create k in
+    put_raw_key cursor ~flags ka v
+
+  let replace cursor v =
+    (* mdb_put mdb_current is supposed to replace the current _value_.
+     * LMDB API documentation says the current key needs to be passed, too.
+     * So first get the raw current key to pass it back in. *)
+    let ka, _ =
+      Mdb.cursor_get cursor.cursor
+        Mdb.Block_option.none Mdb.Block_option.none
+        Ops.get_current
+    in
+    put_raw_key cursor ~flags:Flags.current ka v
+
+  let remove ?(all=false) cursor =
+    Mdb.cursor_del cursor.cursor
+      (if all then Flags.no_dup_data else Flags.none)
 end

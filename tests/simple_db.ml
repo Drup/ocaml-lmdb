@@ -1,15 +1,16 @@
 open Lmdb
 
 let () =
-  print_endline "get the env" ;
-  let env = Env.(create rw ~flags:Flags.no_subdir ~max_dbs:1 "/tmp/foo.db") in
+  print_endline "create an env" ;
+  let env = Env.(create rw ~flags:Flags.no_subdir "/tmp/foo.db") in
 
-  print_endline "create the db" ;
-  let db = Db.create ~create:true env "pouf" in
+  print_endline "create the map" ;
+  let map =
+    Db.(create ~key:Conv.string ~value:Conv.string env) in
 
-  print_endline "put the key in the db" ;
-  Db.put db "foo" (read_line ()) ;
+  print_endline "put the key-value binding in the map" ;
+  Db.put map "foo" (read_line ()) ;
 
-  print_endline "get the key from the db" ;
-  let s = Db.get db "foo" in
+  print_endline "get the value from the map" ;
+  let s = Db.get map "foo" in
   print_endline s ;
