@@ -476,6 +476,28 @@ end
   *)
   val abort : _ t -> unit
 
+  (** {2 Iterators} *)
+
+  (** Call [f] once for each key passing the key and {e all} associated values. *)
+
+  val iter_all :
+    ?cursor:('key, 'value, [> `Read ] as 'perm) t ->
+    f:('key -> 'value array -> unit) ->
+    ('key, 'value, 'perm) Db.t ->
+    unit
+
+  val fold_left_all :
+    ?cursor:('key, 'value, [> `Read ] as 'perm) t ->
+    f:('a -> 'key -> 'value array -> 'a) -> 'a ->
+    ('key, 'value, 'perm) Db.t ->
+    'a
+
+  val fold_right_all :
+    ?cursor:('key, 'value, [> `Read ] as 'perm) t ->
+    f:('key -> 'value array -> 'a -> 'a) ->
+    ('key, 'value, 'perm) Db.t ->
+    'a -> 'a
+
 
   (** {2 Modification} *)
 

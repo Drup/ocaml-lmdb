@@ -149,6 +149,19 @@ let test_cursor =
         ignore @@ Txn.go ro (env2 :> [ `Read ] Env.t)
           (fun txn -> Db.get ~txn map 0 |> ignore);
       end;
+      let map2 =
+        Db.(create ~dup:true
+               ~key:Conv.int32_be_as_int
+               ~value:Conv.int32_be_as_int
+               ~name:"Cursor.wrongmap" env)
+      in
+      let map2_ro = (map2 :> (_,_,[ `Read ]) Db.t) in
+      check_raises "wrong cursor" (Invalid_argument "Lmdb.Cursor.fold: Got cursor for wrong db") begin fun () ->
+        ignore @@ Cursor.go ro map2_ro
+          (fun cursor -> fold_left_all ~cursor () (map :> (_,_,[ `Read ]) Db.t) ~f:(fun _ _ _ -> ()));
+      end;
+      Env.close env2;
+      Sys.remove (filename ^ "2")
     end
   ; "append(_dup)", `Quick,
     begin fun () ->
@@ -165,6 +178,43 @@ let test_cursor =
           loop (n * 2);
         end
       in loop 12;
+    end
+  ; "fold_left_all", `Quick, begin fun () ->
+      Cursor.fold_left_all 12 map
+        ~f:begin fun n key values ->
+          check int "key" n key;
+          let rec loop_dup i m =
+            if m <= 536870912 then begin
+              check int "dup" m values.(i);
+              loop_dup (i+1) (m * 2);
+            end
+            else check int "no extra dups" i (Array.length values)
+          in loop_dup 0 n;
+          (n * 2)
+        end
+      |> check int "last_key" 805306368
+    end
+  ; "fold_right_all", `Quick, begin fun () ->
+      Cursor.fold_right_all map 402653184
+        ~f:begin fun key values n ->
+          check int "key" n key;
+          let rec loop_dup i m =
+            if m <= 536870912 then begin
+              check int "dup" m values.(i);
+              loop_dup (i+1) (m * 2);
+            end
+            else check int "no extra dups" i (Array.length values)
+          in loop_dup 0 n;
+          (n / 2)
+        end
+      |> check int "last_key" 6
+    end
+  ; "iter_all", `Quick, begin fun () -> (* TODO: check the output automatically. *)
+      Cursor.iter_all map
+        ~f:begin fun key values ->
+          Printf.printf "(%d, [%s]\n" key
+            (Array.map string_of_int values |> Array.to_list |> String.concat ";");
+        end
     end
   ; "first", `Quick, begin fun () ->
       ignore @@ go rw map ?txn:None @@ fun cursor ->

@@ -490,6 +490,19 @@ module Cursor = struct
 
   let abort cursor = raise (Abort (Obj.repr cursor))
 
+  (* Used internally for trivial functions, not exported. *)
+  let trivial perm ?cursor (db :_ Db.t) f =
+    match (cursor :_ t option) with
+    | Some cursor ->
+      if cursor.db != db
+      then invalid_arg
+          "Lmdb.Cursor.fold: Got cursor for wrong db";
+      f cursor
+    | None ->
+      match go perm db f with
+      | None -> assert false
+      | Some x -> x
+
   let seek (type key value) { cursor ; db } k =
     let module Key = (val db.key :Db.Conv.S with type t = key) in
     let module Value = (val db.value :Db.Conv.S with type t = value) in
@@ -705,6 +718,43 @@ module Cursor = struct
   let remove ?(all=false) cursor =
     Mdb.cursor_del cursor.cursor
       (if all then Flags.no_dup_data else Flags.none)
+
+  let fold_prim_all init step get_all ?cursor ~f acc db =
+    let fold cursor =
+      match
+        try Some (init cursor)
+        with Not_found -> None
+      with
+      | None -> acc
+      | Some (key,first) ->
+        let values = get_all cursor first in
+        let acc = f acc key values in
+        let rec loop acc =
+          match
+            try Some (step cursor)
+            with Not_found -> None
+          with
+          | None -> acc
+          | Some (key,first) ->
+            let values = get_all cursor first in
+            let acc = f acc key values in
+            loop acc
+        in loop acc
+    in
+    trivial ro
+      ?cursor:(cursor :> (_, _, [ `Read ]) t option)
+      (db :> (_, _, [ `Read ]) Db.t)
+      fold
+
+  let fold_left_all ?cursor ~f acc db =
+    fold_prim_all first next_nodup get_values_from_first ?cursor ~f acc db
+
+  let fold_right_all ?cursor ~f db acc =
+    let f acc key values = f key values acc in
+    fold_prim_all last prev_nodup get_values_from_last ?cursor ~f acc db
+
+  let iter_all ?cursor ~f db =
+    fold_left_all ?cursor () db ~f:(fun () -> f)
 
   (* The following two operations are not exposed, due to inherent unsafety:
      - Ops.get_multiple
