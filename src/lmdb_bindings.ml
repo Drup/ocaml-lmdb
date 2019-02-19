@@ -75,6 +75,8 @@ module type Flags = sig
   external ( * ) : t -> t -> t = "%andint"
   val test : t -> t -> bool
   external eq : t -> t -> bool = "%equal"
+  external of_int : int -> t   = "%identity"
+  external to_int : t -> int   = "%identity"
   val none : t
 end
 module Flags :Flags with type t = int = struct
@@ -83,6 +85,8 @@ module Flags :Flags with type t = int = struct
   external ( * ) : t -> t -> t = "%andint"
   let test f m = f * m = f
   external eq : t -> t -> bool = "%equal"
+  external of_int : int -> t   = "%identity"
+  external to_int : t -> int   = "%identity"
   let none :t = 0
 end
 
@@ -96,8 +100,7 @@ type stats =
   ; entries : int
   }
 
-(* bigstring *)
-module Bigstring = Bigstringaf
+type bigstring = Bigstringaf.t
 
 (* env *)
 type -'perm env constraint 'perm = [< `Read | `Write ]
@@ -185,10 +188,10 @@ module PutFlags = struct
   let no_overwrite    = nooverwrite
   let no_dup_data     = nodupdata
   let current         = current
-  let _reserve        = reserve
+  let reserve        = reserve
   let append          = append
   let append_dup      = appenddup
-  let _multiple       = multiple
+  let multiple       = multiple
 end
 module Block_option = struct
   type +'a t
@@ -196,9 +199,9 @@ module Block_option = struct
   external some_unsafe : 'a -> 'a t = "%identity"
   external get_unsafe  : 'a t -> 'a = "%identity"
   let is_some o = Obj.(is_block (repr o))
-  let _is_none o = not (is_some o)
+  let is_none o = not (is_some o)
   let some x = assert (is_some x); some_unsafe x
-  let _get_exn o =
+  let get_exn o =
     if is_some o
     then get_unsafe o
     else raise Not_found
@@ -215,25 +218,25 @@ external dbi_stat : [> `Read ] txn -> dbi -> stats
 external drop : [> `Write ] txn -> dbi -> bool -> unit
   = "mdbs_drop"
 external get
-  : [> `Read ] txn -> dbi -> Bigstring.t -> Bigstring.t
+  : [> `Read ] txn -> dbi -> bigstring -> bigstring
   = "mdbs_get"
 external put
-  : [> `Read | `Write ] txn -> dbi -> Bigstring.t -> Bigstring.t ->
+  : [> `Read | `Write ] txn -> dbi -> bigstring -> bigstring ->
     PutFlags.t -> unit
   = "mdbs_put"
 external put_reserve
-  : [> `Read | `Write ] txn -> dbi -> Bigstring.t -> int ->
-    PutFlags.t -> Bigstring.t
+  : [> `Read | `Write ] txn -> dbi -> bigstring -> int ->
+    PutFlags.t -> bigstring
   = "mdbs_put"
 external del
   : [> `Read | `Write ] txn -> dbi ->
-    Bigstring.t -> Bigstring.t Block_option.t -> unit
+    bigstring -> bigstring Block_option.t -> unit
   = "mdbs_del"
 external cmp
-  : _ txn -> dbi -> Bigstring.t -> Bigstring.t -> int
+  : _ txn -> dbi -> bigstring -> bigstring -> int
   = "mdbs_cmp"
 external dcmp
-  : _ txn -> dbi -> Bigstring.t -> Bigstring.t -> int
+  : _ txn -> dbi -> bigstring -> bigstring -> int
   = "mdbs_dcmp"
 
 (* cursor *)
@@ -256,29 +259,29 @@ module Ops = struct
   let prev_dup        = prev_dup
   let prev_nodup      = prev_nodup
   let set             = set
-  let _set_key        = set_key
+  let set_key        = set_key
   let set_range       = set_range
-  (* let _prev_multiple  = prev_multiple - only since lmdb 0.9.19 *)
+  (* let prev_multiple  = prev_multiple - only since lmdb 0.9.19 *)
 end
 external cursor_open : 'perm txn -> dbi -> 'perm cursor
   = "mdbs_cursor_open"
 external cursor_close : 'perm cursor -> unit
   = "mdbs_cursor_close"
 external cursor_put
-  : [> `Read | `Write ] cursor -> Bigstring.t -> Bigstring.t ->
+  : [> `Read | `Write ] cursor -> bigstring -> bigstring ->
     PutFlags.t -> unit
   = "mdbs_cursor_put"
 external cursor_put_reserve
-  : [> `Read | `Write ] cursor -> Bigstring.t -> int ->
-    PutFlags.t -> Bigstring.t
+  : [> `Read | `Write ] cursor -> bigstring -> int ->
+    PutFlags.t -> bigstring
   = "mdbs_cursor_put"
 external cursor_del
   : [> `Read | `Write ] cursor -> PutFlags.t -> unit
   = "mdbs_cursor_del"
 external cursor_get
   : [> `Read ] cursor ->
-    Bigstring.t Block_option.t -> Bigstring.t Block_option.t -> Ops.t ->
-    (Bigstring.t * Bigstring.t)
+    bigstring Block_option.t -> bigstring Block_option.t -> Ops.t ->
+    bigstring * bigstring
   = "mdbs_cursor_get"
 external cursor_count : [> `Read ] cursor -> int
   = "mdbs_cursor_count"

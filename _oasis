@@ -11,8 +11,7 @@ Plugins: META (0.4), DevFiles (0.4)
 
 Library lmdb
   Path: src
-  Modules: Lmdb
-  InternalModules: Lmdb_bindings
+  Modules: Lmdb_bindings, Lmdb
   BuildDepends: bigstringaf
   CCLib: -llmdb
   CSources: lmdb_stubs.c

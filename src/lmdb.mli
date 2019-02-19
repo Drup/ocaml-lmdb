@@ -1,4 +1,4 @@
-(** OCaml binding for LMDB. *)
+(** High level bindings for LMDB. *)
 
 (** The {{:http://www.lmdb.tech/doc/}LMDB} database
     is a fast in-file key-value store that supports ACID transactions.
@@ -23,7 +23,7 @@
 
     Using {!Map}, we can open the unnamed map and add our first value:
 {[
-let map = Map.(open_existing ~key:Conv.string ~value:Conv.string env) in
+let map = Map.(open_existing nodup ~key:Conv.string ~value:Conv.string env) in
 Map.put map "Bactrian camel" "Elegant and beautiful animal with two humps."
 ]}
 
@@ -36,34 +36,7 @@ Map.put map "Bactrian camel" "Elegant and beautiful animal with two humps."
 module Mdb :module type of Lmdb_bindings
 
 
-(** {2 Common types} *)
-
-(** Operations on sets of flags. *)
-module type Flags = sig
-  type t
-  (** The type of a set of flags *)
-
-  external ( + ) : t -> t -> t = "%orint"
-  (** [a + b] is the {e union} of flag sets [a] and [b].
-      This corresponds to a bitwise {e or} on C bitfields. *)
-
-  external ( * ) : t -> t -> t = "%andint"
-  (** [a * b] is the intersection of flag sets a and b.
-      This corresponds to a bitwise {e and} on C bitfields. *)
-
-  val test : t -> t -> bool
-  (** [test a b] is [true] only if [a] is a subset of [b].
-      This corresponds to [a & b == a] for C bitfields. *)
-
-  external eq : t -> t -> bool = "%equal"
-  (** [eq a b] The equals relation. *)
-
-  val none : t
-  (** [none] The empty set of flags. *)
-end
-
-
-(** {3 Permissions} *)
+(** {2 Permissions} *)
 
 (** This library uses [[< `Read | `Write ]] phantom types to encode the
     read/write permissions of environments, transactions, maps and
@@ -86,24 +59,7 @@ val rw : [ `Read | `Write ] perm
 module Env : sig
   type -'perm t constraint 'perm = [< `Read | `Write ]
 
-  module Flags :  sig
-    include Flags
-    val fixed_map : t
-    val no_subdir : t
-      (** Create the environment not in an existing directory,
-          but create the data file with exactly the filename given to {!Env.create}.
-          The lock file will have "-lock" appended.
-      *)
-
-    val no_sync : t
-    val no_meta_sync : t
-    val write_map : t
-    val map_async : t
-    val no_tls : t
-    val no_lock : t
-    val no_read_ahead : t
-    val no_mem_init : t
-  end
+  module Flags : module type of Lmdb_bindings.EnvFlags
 
   (** [create perm path] creates an environment with {!ro} or {!rw} permissions
       with {e data} and {e lock} files in the already existing directory [path].
@@ -207,7 +163,7 @@ module Map : sig
       the {!Conv.S.flags} applied when the converter is used in a map.
 
       For convenience every converter is is also exported as first-class value
-      so it cat be easily passed to {!Map.create} and {!Map.open_existing}.
+      so it can be easily passed to {!Map.create} and {!Map.open_existing}.
   *)
   module Conv : sig
     (** {2 Types } *)
@@ -225,14 +181,7 @@ module Map : sig
         You probably won't need those flags since the converters provided in {!
         Conv} will already make appropriate use of these flags.
     *)
-    module Flags : sig
-      include Flags
-      val integer_key : t
-      val reverse_key : t
-      val integer_dup : t
-      val reverse_dup : t
-      val dup_fixed : t
-    end
+    module Flags : module type of Lmdb_bindings.DbiFlags
 
     (** Signature of a converter module *)
     module type S = sig
@@ -377,29 +326,7 @@ module Map : sig
   *)
   val get : ('key, 'value, [> `Read ], _) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'value
 
-  (** Flags usable with the [put] operation. *)
-  module Flags : sig
-    include Flags
-    val no_overwrite : t
-    (** Raise {!exception: Exists} if the key already exists no matter whether the map
-        supports duplicates.
-    *)
-
-    val no_dup_data : t
-    (** Only for maps supporting duplicates: Don't add the value to an already
-        existing key if this value is already part of this key.
-    *)
-
-    val append : t
-    (** Add a key that is greater than any existing key.
-        Used to efficiently add sorted data.
-    *)
-
-    val append_dup : t
-    (** Add value to key that is greater than any existing value of this key.
-        Used to efficiently add sorted values to a key.
-    *)
-  end
+  module Flags : module type of Lmdb_bindings.PutFlags
 
   (** [put map key value] adds [value] to [key].
 
@@ -519,8 +446,7 @@ end
 
   (** {2 Modification} *)
 
-  (** {!Map.Flags} *)
-  module Flags : module type of Map.Flags
+  module Flags : module type of Lmdb_bindings.PutFlags
 
   (** [put cursor key value] adds [value] to [key] and moves the cursor to
       its position.
