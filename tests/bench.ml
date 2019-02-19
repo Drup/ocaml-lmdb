@@ -11,7 +11,7 @@ let benchmark repeat =
   let errors = ref 0 in
 
   let bench name conv_key conv_val key value n =
-    let map = Map.(create ~key:conv_key ~value:conv_val) env ~name in
+    let map = Map.(create nodup ~key:conv_key ~value:conv_val) env ~name in
     let bench map cycles =
       let open Map in
       for i=0 to cycles-1 do

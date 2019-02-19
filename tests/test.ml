@@ -23,7 +23,7 @@ let () =
 
 let[@warning "-26-27"] capabilities () =
   let map =
-    Map.(create ~dup:false
+    Map.(create nodup
            ~key:Conv.int32_be_as_int
            ~value:Conv.int32_be_as_int
            ~name:"Capabilities" env)
@@ -41,7 +41,7 @@ let[@warning "-26-27"] capabilities () =
   assert (Map.get ~txn:txn_ro map 4 = 4);
   Cursor.go ro
     ~txn:(txn_rw :> [ `Read ] Txn.t)
-    (map :> (_,_,[ `Read ]) Map.t) @@ fun cursor ->
+    (map :> (_,_,[ `Read ], _) Map.t) @@ fun cursor ->
   assert (Cursor.get cursor 4 = 4);
   (* Cursor.first_dup cursor; <- FAILS *)
 ;;
@@ -51,7 +51,7 @@ let test_map =
   "Map",
   let open Map in
   let map =
-    Map.(create ~dup:false
+    Map.(create nodup
            ~key:Conv.int32_be_as_int
            ~value:Conv.int32_be_as_int
            ~name:"Map" env)
@@ -81,7 +81,7 @@ let test_map =
   ; "put no_dup_data", `Quick, begin fun () ->
       ignore @@ Txn.go rw env @@ fun txn ->
       let map =
-        Map.(create ~dup:true ~txn
+        Map.(create dup ~txn
                ~key:Conv.int32_be_as_int
                ~value:Conv.int32_be_as_int
                ~name:"Map.dup" env)
@@ -102,7 +102,7 @@ let test_map =
       let buf = String.make 1024 'X' in
       let n = 10000 in
       let map =
-        create ~dup:false
+        create nodup
           ~key:Conv.int32_be_as_int
           ~value:Conv.string
           ~name:"map2" env
@@ -130,7 +130,7 @@ let test_cursor =
   "Cursor",
   let open Cursor in
   let map =
-    Map.(create ~dup:true
+    Map.(create dup
            ~key:Conv.int32_be_as_int
            ~value:Conv.int32_be_as_int
            ~name:"Cursor" env)
@@ -150,15 +150,15 @@ let test_cursor =
           (fun txn -> Map.get ~txn map 0 |> ignore);
       end;
       let map2 =
-        Map.(create ~dup:true
+        Map.(create dup
                ~key:Conv.int32_be_as_int
                ~value:Conv.int32_be_as_int
                ~name:"Cursor.wrongmap" env)
       in
-      let map2_ro = (map2 :> (_,_,[ `Read ]) Map.t) in
+      let map2_ro = (map2 :> (_,_,[ `Read ],_) Map.t) in
       check_raises "wrong cursor" (Invalid_argument "Lmdb.Cursor.fold: Got cursor for wrong map") begin fun () ->
         ignore @@ Cursor.go ro map2_ro
-          (fun cursor -> fold_left_all ~cursor () (map :> (_,_,[ `Read ]) Map.t) ~f:(fun _ _ _ -> ()));
+          (fun cursor -> fold_left_all ~cursor () (map :> (_,_,[ `Read ],_) Map.t) ~f:(fun _ _ _ -> ()));
       end;
       Env.close env2;
       Sys.remove (filename ^ "2")
@@ -351,7 +351,7 @@ let test_int =
     name, `Quick,
     begin fun () ->
       let map =
-        (create ~dup:true
+        (create dup
            ~key:conv
            ~value:conv
            ~name env)

@@ -283,7 +283,7 @@ module Map = struct
     let bigstring = (module Bigstring :S with type t = bigstring)
   end
 
-  type ('k, 'v, -'perm) t =
+  type ('k, 'v, -'perm, -'dup) t =
     { env               :'perm Env.t
     ; mutable dbi       :Mdb.dbi
     ; flags             :Mdb.DbiFlags.t
@@ -291,16 +291,21 @@ module Map = struct
     ; value             :(module Conv.S with type t = 'v)
     }
     constraint 'perm = [< `Read | `Write ]
+    constraint 'dup = [< `Dup | `Uni ]
+
+  type 'a card = Dup | Nodup constraint 'a = [< `Dup | `Uni ]
+  let dup :[ `Uni | `Dup ] card = Dup
+  let nodup :[ `Uni ] card = Nodup
 
   let create
-      ?(dup=false)
+      (dup      :([< `Dup | `Uni ] as 'dup) card)
       (type key value)
       ~(key     :key Conv.t)
       ~(value   :value Conv.t)
       ?(txn     :'perm Txn.t option)
       ?(name    :string option)
       (env      :'perm Env.t)
-    :(key, value, 'perm) t
+    :(key, value, 'perm, 'dup) t
     =
     let module Key = (val key) in
     let module Value = (val value) in
@@ -309,8 +314,8 @@ module Map = struct
       create +
       Key.flags * (reverse_key + integer_key) +
       match dup with
-      | false -> Conv.Flags.none
-      | true ->
+      | Nodup -> Conv.Flags.none
+      | Dup ->
         dup_sort +
         Value.flags * (dup_fixed + integer_dup + reverse_dup)
     in
@@ -319,9 +324,9 @@ module Map = struct
       let dbi = Mdb.dbi_open txn name flags in
       let flags = Mdb.dbi_flags txn dbi in
       begin match dup with
-        | true when not (Conv.Flags.(test dup_sort) flags) ->
+        | Dup when not (Conv.Flags.(test dup_sort) flags) ->
           invalid_arg "Lmdb.Map.create: duplicates not supported on this map"
-        | true | false -> ()
+        | Dup | Nodup -> ()
       end;
       dbi, flags
     in
@@ -332,14 +337,14 @@ module Map = struct
     db_t
 
   let open_existing
-      ?(dup=false)
+      (dup       :([< `Dup | `Uni ] as 'dup) card)
       (type key value)
       ~(key     :key Conv.t)
       ~(value   :value Conv.t)
       ?(txn     :_ Txn.t option)
       ?(name    :string option)
       (env      :'perm Env.t)
-    :(key, value, 'perm) t
+    :(key, value, 'perm, 'dup) t
     =
     let dbi, flags =
       Txn.trivial ro
@@ -348,9 +353,9 @@ module Map = struct
       let dbi = Mdb.dbi_open txn name Mdb.DbiFlags.none in
       let flags = Mdb.dbi_flags txn dbi in
       begin match dup with
-        | true when not (Conv.Flags.(test dup_sort) flags) ->
+        | Dup when not (Conv.Flags.(test dup_sort) flags) ->
           invalid_arg "Lmdb.Map.create: duplicates not supported on this map"
-        | true | false -> ()
+        | Dup | Nodup -> ()
       end;
       dbi, flags
     in
@@ -463,10 +468,11 @@ module Cursor = struct
 
   module Flags = Mdb.PutFlags
 
-  type ('k, 'v, -'perm) t =
+  type ('k, 'v, -'perm, -'dup) t =
     { cursor: 'perm Mdb.cursor
-    ; map: ('k, 'v, 'perm) Map.t }
+    ; map: ('k, 'v, 'perm, 'dup) Map.t }
     constraint 'perm = [< `Read | `Write ]
+    constraint 'dup = [< `Dup | `Uni ]
 
   exception Abort of Obj.t
 
@@ -744,8 +750,8 @@ module Cursor = struct
         in loop acc
     in
     trivial ro
-      ?cursor:(cursor :> (_, _, [ `Read ]) t option)
-      (map :> (_, _, [ `Read ]) Map.t)
+      ?cursor:(cursor :> (_, _, [ `Read ], 'dup) t option)
+      (map :> (_, _, [ `Read ], 'dup) Map.t)
       fold
 
   let fold_left_all ?cursor ~f acc map =

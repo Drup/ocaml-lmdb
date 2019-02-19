@@ -323,11 +323,23 @@ module Map : sig
   end
 
   (** A handle for a map from keys of type ['key] to values of type ['value]. *)
-  type ('key, 'value, -'perm) t
+  type ('key, 'value, -'perm, -'dup) t
     constraint 'perm = [< `Read | `Write ]
+    constraint 'dup = [< `Dup | `Uni ]
 
-  (** [create ~key ~value env]
+  type 'a card constraint 'a = [< `Dup | `Uni ]
+
+  (** Request support for sorted duplicates. *)
+  val dup :[ `Uni | `Dup ] card
+
+  (** Do not request support for sorted duplicates. *)
+  val nodup :[ `Uni ] card
+
+  (** [create dup ~key ~value env]
       open (and possibly create) a map in the environment [env].
+
+      [dup] may be [dup] or [nodup], specifying whether the map supports
+      multiple values per key.
 
       Only a single transaction may call this function at a time.
       This transaction needs to finish before any other transaction may call
@@ -341,29 +353,29 @@ module Map : sig
       but duplicates where requested.
   *)
   val create :
-    ?dup        :bool ->
+    ([< `Dup | `Uni ] as 'dup) card ->
     key         :'key Conv.t ->
     value       :'value Conv.t ->
     ?txn        :[> `Read | `Write ] Txn.t ->
     ?name       :string ->
-    ([> `Read | `Write ] as 'perm) Env.t -> ('key, 'value, 'perm) t
+    ([> `Read | `Write ] as 'perm) Env.t -> ('key, 'value, 'perm, 'dup) t
 
   (** [open_existing env] is like [create], but only opens already existing maps.
       @raise Not_found if the map doesn't exist.
   *)
   val open_existing :
-    ?dup        :bool ->
+    ([< `Dup | `Uni ] as 'dup) card ->
     key         :'key Conv.t ->
     value       :'value Conv.t ->
     ?txn        :[> `Read ] Txn.t ->
     ?name       :string ->
     ([> `Read ] as 'perm) Env.t ->
-    ('key, 'value, 'perm) t
+    ('key, 'value, 'perm, 'dup) t
 
   (** [get map key] returns the first value associated to [key].
       @raise Not_found if the key is not in the map.
   *)
-  val get : ('key, 'value, [> `Read ]) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'value
+  val get : ('key, 'value, [> `Read ], _) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'value
 
   (** Flags usable with the [put] operation. *)
   module Flags : sig
@@ -399,7 +411,7 @@ module Map : sig
       {! Flags.no_overwrite} or {! Flags.no_dup_data} was passed in
       [flags].
   *)
-  val put : ('key, 'value, ([> `Read | `Write ] as 'perm)) t ->
+  val put : ('key, 'value, ([> `Read | `Write ] as 'perm), _) t ->
     ?txn:'perm Txn.t -> ?flags:Flags.t -> 'key -> 'value -> unit
 
   (** [remove map key] removes [key] from [map].
@@ -409,30 +421,30 @@ module Map : sig
 
       @raise Not_found if the key is not in the map.
   *)
-  val remove : ('key, 'value, ([> `Read | `Write ] as 'perm)) t ->
+  val remove : ('key, 'value, ([> `Read | `Write ] as 'perm), _) t ->
     ?txn:'perm Txn.t -> ?value:'value -> 'key -> unit
 
 
   (** {2 Misc} *)
 
-  val stats : ?txn: [> `Read ] Txn.t -> ('key, 'value, [> `Read ]) t -> Mdb.stats
+  val stats : ?txn: [> `Read ] Txn.t -> ('key, 'value, [> `Read ], _) t -> Mdb.stats
 
   (** [drop ?delete map] Empties [map].
       @param delete If [true] [map] is also deleted from the environment
       and the handle [map] invalidated. *)
   val drop : ?txn: ([> `Read | `Write ] as 'perm) Txn.t -> ?delete:bool ->
-    ('key, 'value, 'perm) t -> unit
+    ('key, 'value, 'perm, _) t -> unit
 
   (** [compare_key map ?txn a b]
      Compares [a] and [b] as if they were keys in [map]. *)
-  val compare_key : ('key, 'value, [> `Read ]) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'key -> int
+  val compare_key : ('key, 'value, [> `Read ], _) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'key -> int
 
   (** [compare map ?txn a b] Same as [compare_key]. *)
-  val compare : ('key, 'value, [> `Read ]) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'key -> int
+  val compare : ('key, 'value, [> `Read ], _) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'key -> int
 
   (** [compare_val map ?txn a b]
      Compares [a] and [b] as if they were values in a [dup_sort] [map]. *)
-  val compare_val : ('key, 'value, [> `Read ]) t -> ?txn:[> `Read ] Txn.t -> 'value -> 'value -> int
+  val compare_val : ('key, 'value, [> `Read ], [> `Dup ]) t -> ?txn:[> `Read ] Txn.t -> 'value -> 'value -> int
 end
 
 (** Iterators over maps. *)
@@ -441,8 +453,12 @@ module Cursor : sig
       Every cursor implicitely uses a transaction.
   *)
 
-  type ('key, 'value, -'perm) t
+  (** A cursor inherits two phantom types: the [[< `Read | `Write ]] permissions
+      from the transaction and the [[< `Dup | `Uni ]] support from the map.
+  *)
+  type ('key, 'value, -'perm, -'dup) t
     constraint 'perm = [< `Read | `Write ]
+    constraint 'dup = [< `Dup | `Uni ]
 
   (** [go perm map ?txn f] makes a cursor in the transaction [txn] using the
       function [f cursor].
@@ -468,8 +484,8 @@ end
       created before calling [f] and be committed after [f] returns.
       Such a transient transaction may be aborted using {! abort}.
   *)
-  val go : 'perm perm -> ?txn:'perm Txn.t -> ('key, 'value, 'perm) Map.t ->
-    (('key, 'value, 'perm) t -> 'a) -> 'a option
+  val go : 'perm perm -> ?txn:'perm Txn.t -> ('key, 'value, 'perm, 'dup) Map.t ->
+    (('key, 'value, 'perm, 'dup) t -> 'a) -> 'a option
 
   (** [abort cursor] aborts [cursor] and the current [go] function,
       which will return [None].
@@ -483,21 +499,21 @@ end
   (** Call [f] once for each key passing the key and {e all} associated values. *)
 
   val iter_all :
-    ?cursor:('key, 'value, [> `Read ] as 'perm) t ->
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
     f:('key -> 'value array -> unit) ->
-    ('key, 'value, 'perm) Map.t ->
+    ('key, 'value, 'perm, 'dup) Map.t ->
     unit
 
   val fold_left_all :
-    ?cursor:('key, 'value, [> `Read ] as 'perm) t ->
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
     f:('a -> 'key -> 'value array -> 'a) -> 'a ->
-    ('key, 'value, 'perm) Map.t ->
+    ('key, 'value, 'perm, 'dup) Map.t ->
     'a
 
   val fold_right_all :
-    ?cursor:('key, 'value, [> `Read ] as 'perm) t ->
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
     f:('key -> 'value array -> 'a -> 'a) ->
-    ('key, 'value, 'perm) Map.t ->
+    ('key, 'value, 'perm, 'dup) Map.t ->
     'a -> 'a
 
 
@@ -517,142 +533,142 @@ end
       {! Map.Flags.no_overwrite} or {! Map.Flags.no_dup_data} was passed in
       [flags].
   *)
-  val put : ('key, 'value, [> `Read | `Write ]) t ->
+  val put : ('key, 'value, [> `Read | `Write ], 'dup) t ->
     ?flags:Flags.t -> 'key -> 'value -> unit
 
   (** [replace cursor value] replace the current value by [value]. *)
-  val replace : ('key, 'value, [> `Read | `Write ]) t -> 'value -> unit
+  val replace : ('key, 'value, [> `Read | `Write ], _) t -> 'value -> unit
 
   (** [remove cursor] removes the current binding.
       @param all If [true] removes all the bindings associated to the current key.
       Default is [false].
   *)
-  val remove : ?all:bool -> ('key, 'value, [> `Read | `Write ]) t -> unit
+  val remove : ?all:bool -> ('key, 'value, [> `Read | `Write ], _) t -> unit
 
 
   (** {2 Reading} *)
 
   (** [current cursor] returns key and value at the position of the cursor. *)
-  val current     : ('key, 'value, [> `Read ]) t -> 'key * 'value
+  val current     : ('key, 'value, [> `Read ], _) t -> 'key * 'value
 
   (** [current_all cursor] moves the cursor to the {e last} value of the
       {e current} key. Returns key and all values of the current key.
   *)
-  val current_all : ('key, 'value, [> `Read ]) t -> 'key * 'value array
+  val current_all : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'key * 'value array
 
   (** [count cursor] returns the number of values bound to the current key. *)
-  val count : ('key, 'value, [> `Read ]) t -> int
+  val count : ('key, 'value, [> `Read ], [> `Dup ]) t -> int
 
 
   (** {3 Seeking} *)
 
   (** [get cursor key] moves the cursor to the {e first} value of [key]. *)
-  val get : ('key, 'value, [> `Read ]) t -> 'key -> 'value
+  val get : ('key, 'value, [> `Read ], _) t -> 'key -> 'value
 
   (** [get_all cursor key] moves the cursor to the {e last} value of [key].
       Returns all values of [key].
   *)
-  val get_all : ('key, 'value, [> `Read ]) t -> 'key -> 'value array
+  val get_all : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'key -> 'value array
 
   (** [seek cursor key] moves the cursor to the first value of [key]. *)
-  val seek        : ('key, 'value, [> `Read ]) t -> 'key -> 'key * 'value
+  val seek        : ('key, 'value, [> `Read ], _) t -> 'key -> 'key * 'value
 
   (** [seek_all cursor key]
       moves the cursor to the {e last} value of [key].
       Returns all values of [key].
   *)
-  val seek_all    : ('key, 'value, [> `Read ]) t -> 'key -> 'key * 'value array
+  val seek_all    : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'key -> 'key * 'value array
 
   (** [seek_range cursor key] moves the cursor to the {e first} value of the
       first key greater than or equal to [key].
   *)
-  val seek_range     : ('key, 'value, [> `Read ]) t -> 'key -> 'key * 'value
+  val seek_range     : ('key, 'value, [> `Read ], _) t -> 'key -> 'key * 'value
 
   (** [seek_range_all cursor key] moves the cursor to the {e last} value of the
       first key greater than or equal to [key]. Returns all values of this key.
   *)
-  val seek_range_all : ('key, 'value, [> `Read ]) t -> 'key -> 'key * 'value array
+  val seek_range_all : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'key -> 'key * 'value array
 
   (** [seek_dup cursor key value] moves the cursor to [value] of [key]. *)
-  val seek_dup : ('key, 'value, [> `Read ]) t ->
+  val seek_dup : ('key, 'value, [> `Read ], [> `Dup ]) t ->
     'key -> 'value -> unit
 
   (** [seek_range_dup cursor key value] moves the cursor to the first value greater
       than or equal to [value] of the first key greater than or equal to [key].
   *)
-  val seek_range_dup : ('key, 'value, [> `Read ]) t ->
+  val seek_range_dup : ('key, 'value, [> `Read ], [> `Dup ]) t ->
     'key -> 'value -> ('key * 'value)
 
 
   (** {3 Moving} *)
 
   (** [first cursor] moves the cursor to the {e first} value of the first key. *)
-  val first       : ('key, 'value, [> `Read ]) t -> 'key * 'value
+  val first       : ('key, 'value, [> `Read ], _) t -> 'key * 'value
 
   (** [first_all cursor]
       moves the cursor to the {e last} value of the first key.
       Returns all values of the first key.
   *)
-  val first_all   : ('key, 'value, [> `Read ]) t -> 'key * 'value array
+  val first_all   : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'key * 'value array
 
   (** [first_dup cursor] moves the cursor to the first {e value} of the current key. *)
-  val first_dup : ('key, 'value, [> `Read ]) t -> 'value
+  val first_dup : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'value
 
   (** [last cursor] moves the cursor to the {e last} value of the last key. *)
-  val last        : ('key, 'value, [> `Read ]) t -> 'key * 'value
+  val last        : ('key, 'value, [> `Read ], _) t -> 'key * 'value
 
   (** [last_all cursor]
       moves the cursor to the {e first} value of the last key.
       Returns all values of the {e last} key.
   *)
-  val last_all    : ('key, 'value, [> `Read ]) t -> 'key * 'value array
+  val last_all    : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'key * 'value array
 
   (** [last_dup cursor] moves the cursor to the last {e value} of the current key. *)
-  val last_dup : ('key, 'value, [> `Read ]) t -> 'value
+  val last_dup : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'value
 
   (** [next cursor] moves the cursor to the next key-value pair.
       This may be the {e next value} of the {e current key} or the
       {e first value} of the {e next key}.
   *)
-  val next        : ('key, 'value, [> `Read ]) t -> 'key * 'value
+  val next        : ('key, 'value, [> `Read ], _) t -> 'key * 'value
 
   (** [next_nodup cursor]
       moves the cursor to the {e first} value of the next key.
   *)
-  val next_nodup  : ('key, 'value, [> `Read ]) t -> 'key * 'value
+  val next_nodup  : ('key, 'value, [> `Read ], _) t -> 'key * 'value
 
   (** [next_all cursor]
       moves the cursor to the {e last} value of the next key.
       Returns all values of the next key.
   *)
-  val next_all    : ('key, 'value, [> `Read ]) t -> 'key * 'value array
+  val next_all    : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'key * 'value array
 
   (** [next_dup cursor] moves the cursor to the next value of the current key.
       @raise Not_found if the cursor is already on the last value of the current key.
   *)
-  val next_dup : ('key, 'value, [> `Read ]) t -> 'value
+  val next_dup : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'value
 
   (** [prev cursor] moves the cursor to the previous key-value pair.
       This may be the {e previous value} of the {e current key} or the
       {e last value} of the {e previous key}.
   *)
-  val prev        : ('key, 'value, [> `Read ]) t -> 'key * 'value
+  val prev        : ('key, 'value, [> `Read ], _) t -> 'key * 'value
 
   (** [prev_nodup cursor]
       moves the cursor to the {e last} value of the previous key.
   *)
-  val prev_nodup  : ('key, 'value, [> `Read ]) t -> 'key * 'value
+  val prev_nodup  : ('key, 'value, [> `Read ], _) t -> 'key * 'value
 
   (** [prev_all cursor]
       moves the cursor to the {e first} value of the previous key.
       Returns all values of the previous key.
   *)
-  val prev_all    : ('key, 'value, [> `Read ]) t -> 'key * 'value array
+  val prev_all    : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'key * 'value array
 
   (** [prev_dup cursor] moves the cursor to the previous value of the current key.
       @raise Not_found if the cursor is already on the first value of the current key.
   *)
-  val prev_dup : ('key, 'value, [> `Read ]) t -> 'value
+  val prev_dup : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'value
 end
 
 
