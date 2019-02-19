@@ -576,6 +576,90 @@ module Cursor = struct
   let next_dup  c = get_dup_prim Ops.next_dup c
   let prev_dup  c = get_dup_prim Ops.prev_dup c
 
+  let cursor_none cursor = Mdb.cursor_get cursor.cursor
+      Mdb.Block_option.none Mdb.Block_option.none
+
+  let get_values_multiple (type value) cursor len =
+    let module Value = (val cursor.db.value :Db.Conv.S with type t = value) in
+    assert Db.Conv.Flags.(test dup_fixed cursor.db.flags);
+    let _, first = cursor_none cursor Ops.first_dup in
+    let size = Bigstring.length first in
+    let values = Array.make len (Obj.magic ()) in
+    let _, buf = cursor_none cursor Ops.get_multiple in
+    let rec convert buf off i =
+      if off+size <= Bigstring.length buf
+      then begin
+        values.(i) <- Value.read @@ Bigstring.sub buf ~off ~len:size;
+        convert buf (off+size) (i+1)
+      end
+      else begin
+        assert (off = Bigstring.length buf);
+        i
+      end
+    in
+    let i = convert buf 0 0 in
+    let rec loop i =
+      match
+        try Some (cursor_none cursor Ops.next_multiple) with Not_found -> None
+      with
+      | None -> i
+      | Some (_, buf) ->
+        loop (convert buf 0 i);
+    in
+    let i = loop i in
+    assert (i = len);
+    values
+
+
+  let get_values_from_first cursor first =
+    let len = Mdb.cursor_count cursor.cursor in
+    if len > 1 && Db.Conv.Flags.(test (dup_sort + dup_fixed) cursor.db.flags)
+    then get_values_multiple cursor len
+    else begin
+      let values = Array.make len first in
+      for i = 1 to len - 1 do
+        values.(i) <- next_dup cursor
+      done;
+      values
+    end
+
+  let get_values_from_last cursor last =
+    let len = Mdb.cursor_count cursor.cursor in
+    if len > 1 && Db.Conv.Flags.(test (dup_sort + dup_fixed) cursor.db.flags)
+    then begin
+      let values = get_values_multiple cursor len in
+      cursor_none cursor Ops.first_dup |> ignore;
+      values
+    end
+    else begin
+      let values = Array.make len last in
+      for i = len - 2 downto 0 do
+        values.(i) <- prev_dup cursor
+      done;
+      values
+    end
+
+  let get_all cursor k =
+    let first = get cursor k in
+    get_values_from_first cursor first
+
+  let all_prim_from_first cursor f =
+    let key, first = f cursor in
+    key, get_values_from_first cursor first
+  let all_prim_from_last cursor f =
+    let key, first = f cursor in
+    key, get_values_from_last cursor first
+
+  let first_all c    = all_prim_from_first c first
+  let next_all c     = all_prim_from_first c next_nodup
+  let last_all c     = all_prim_from_last  c last
+  let prev_all c     = all_prim_from_last  c prev_nodup
+  let seek_all c k = all_prim_from_first c (fun c -> seek c k)
+  let seek_range_all c k = all_prim_from_first c (fun c -> seek_range c k)
+  let current_all c =
+    first_dup c |> ignore;
+    all_prim_from_first c current
+
   let put_raw_key (type value) { cursor ; db } ~flags ka v =
     let module Value = (val db.value :Db.Conv.S with type t = value) in
     if Db.Conv.Flags.(test dup_sort db.flags)
@@ -621,4 +705,9 @@ module Cursor = struct
   let remove ?(all=false) cursor =
     Mdb.cursor_del cursor.cursor
       (if all then Flags.no_dup_data else Flags.none)
+
+  (* The following two operations are not exposed, due to inherent unsafety:
+     - Ops.get_multiple
+     - Ops.next_multiple
+  *)
 end

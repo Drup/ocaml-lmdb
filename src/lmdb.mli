@@ -511,6 +511,11 @@ end
   (** [current cursor] returns key and value at the position of the cursor. *)
   val current     : ('key, 'value, [> `Read ]) t -> 'key * 'value
 
+  (** [current_all cursor] moves the cursor to the {e last} value of the
+      {e current} key. Returns key and all values of the current key.
+  *)
+  val current_all : ('key, 'value, [> `Read ]) t -> 'key * 'value array
+
   (** [count cursor] returns the number of values bound to the current key. *)
   val count : ('key, 'value, [> `Read ]) t -> int
 
@@ -520,13 +525,29 @@ end
   (** [get cursor key] moves the cursor to the {e first} value of [key]. *)
   val get : ('key, 'value, [> `Read ]) t -> 'key -> 'value
 
+  (** [get_all cursor key] moves the cursor to the {e last} value of [key].
+      Returns all values of [key].
+  *)
+  val get_all : ('key, 'value, [> `Read ]) t -> 'key -> 'value array
+
   (** [seek cursor key] moves the cursor to the first value of [key]. *)
   val seek        : ('key, 'value, [> `Read ]) t -> 'key -> 'key * 'value
+
+  (** [seek_all cursor key]
+      moves the cursor to the {e last} value of [key].
+      Returns all values of [key].
+  *)
+  val seek_all    : ('key, 'value, [> `Read ]) t -> 'key -> 'key * 'value array
 
   (** [seek_range cursor key] moves the cursor to the {e first} value of the
       first key greater than or equal to [key].
   *)
   val seek_range     : ('key, 'value, [> `Read ]) t -> 'key -> 'key * 'value
+
+  (** [seek_range_all cursor key] moves the cursor to the {e last} value of the
+      first key greater than or equal to [key]. Returns all values of this key.
+  *)
+  val seek_range_all : ('key, 'value, [> `Read ]) t -> 'key -> 'key * 'value array
 
   (** [seek_dup cursor key value] moves the cursor to [value] of [key]. *)
   val seek_dup : ('key, 'value, [> `Read ]) t ->
@@ -544,11 +565,23 @@ end
   (** [first cursor] moves the cursor to the {e first} value of the first key. *)
   val first       : ('key, 'value, [> `Read ]) t -> 'key * 'value
 
+  (** [first_all cursor]
+      moves the cursor to the {e last} value of the first key.
+      Returns all values of the first key.
+  *)
+  val first_all   : ('key, 'value, [> `Read ]) t -> 'key * 'value array
+
   (** [first_dup cursor] moves the cursor to the first {e value} of the current key. *)
   val first_dup : ('key, 'value, [> `Read ]) t -> 'value
 
   (** [last cursor] moves the cursor to the {e last} value of the last key. *)
   val last        : ('key, 'value, [> `Read ]) t -> 'key * 'value
+
+  (** [last_all cursor]
+      moves the cursor to the {e first} value of the last key.
+      Returns all values of the {e last} key.
+  *)
+  val last_all    : ('key, 'value, [> `Read ]) t -> 'key * 'value array
 
   (** [last_dup cursor] moves the cursor to the last {e value} of the current key. *)
   val last_dup : ('key, 'value, [> `Read ]) t -> 'value
@@ -563,6 +596,12 @@ end
       moves the cursor to the {e first} value of the next key.
   *)
   val next_nodup  : ('key, 'value, [> `Read ]) t -> 'key * 'value
+
+  (** [next_all cursor]
+      moves the cursor to the {e last} value of the next key.
+      Returns all values of the next key.
+  *)
+  val next_all    : ('key, 'value, [> `Read ]) t -> 'key * 'value array
 
   (** [next_dup cursor] moves the cursor to the next value of the current key.
       @raise Not_found if the cursor is already on the last value of the current key.
@@ -579,6 +618,12 @@ end
       moves the cursor to the {e last} value of the previous key.
   *)
   val prev_nodup  : ('key, 'value, [> `Read ]) t -> 'key * 'value
+
+  (** [prev_all cursor]
+      moves the cursor to the {e first} value of the previous key.
+      Returns all values of the previous key.
+  *)
+  val prev_all    : ('key, 'value, [> `Read ]) t -> 'key * 'value array
 
   (** [prev_dup cursor] moves the cursor to the previous value of the current key.
       @raise Not_found if the cursor is already on the first value of the current key.

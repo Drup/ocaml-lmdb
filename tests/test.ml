@@ -261,6 +261,38 @@ let test_cursor =
       first cursor |> ignore;
       last cursor |> check_kv "last dup" (536870913,7)
     end
+  ; "*_all", `Quick, begin fun () ->
+      ignore @@ go rw map ?txn:None @@ fun cursor ->
+      get_all cursor 536870913 |> check (array int) "get_all 536870913" [|5;6;7|];
+      current cursor |> check_kv "cursor after get_all" (536870913,7);
+      get_all cursor 0 |> check (array int) "get_all 0" [|0;1;2|];
+      current cursor |> check_kv "cursor after get_all" (0,2);
+      last_all cursor |> snd |> check (array int) "last_all" [|5;6;7|];
+      current cursor |> check_kv "cursor after last_all" (536870913,5);
+      prev_nodup cursor |> ignore;
+      next_all cursor |> snd |> check (array int) "next_all" [|5;6;7|];
+      current cursor |> check_kv "cursor after next_all" (536870913,7);
+      first_all cursor |> snd |> check (array int) "first_all" [|0;1;2|];
+      current cursor |> check_kv "cursor after first_all" (0,2);
+      next_nodup cursor |> ignore;
+      prev_all cursor |> snd |> check (array int) "prev_all" [|0;1;2|];
+      current cursor |> check_kv "cursor after prev_all" (0,0);
+      current_all cursor |> snd |> check (array int) "current_all" [|0;1;2|];
+      current cursor |> check_kv "cursor after current_all" (0,2);
+    end
+  ; "get_multiple", `Quick, begin fun () ->
+      ignore @@ go rw map ?txn:None @@ fun cursor ->
+      seek cursor 0 |> ignore;
+      remove cursor ~all:true;
+      for i=0 to 65536 do
+        put cursor ~flags:Flags.append_dup 0 i
+      done;
+      let values = get_all cursor 0 in
+      for i=0 to 65536 do
+        if i <> values.(i)
+        then check int "order in many dups got with get_all" i values.(i)
+      done;
+    end
   ]
 
 let test_int =
