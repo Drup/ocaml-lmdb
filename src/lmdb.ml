@@ -293,6 +293,8 @@ module Map = struct
     constraint 'perm = [< `Read | `Write ]
     constraint 'dup = [< `Dup | `Uni ]
 
+  let env { env; _ } = env
+
   type 'a card = Dup | Nodup constraint 'a = [< `Dup | `Uni ]
   let dup :[ `Uni | `Dup ] card = Dup
   let nodup :[ `Uni ] card = Nodup

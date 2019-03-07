@@ -6,7 +6,7 @@ let () =
 
   print_endline "create the map" ;
   let map =
-    Map.(create nodup ~key:Conv.string ~value:Conv.string env) in
+    Map.(create nodup ~key:Conv.string ~value:Conv.string) env in
 
   print_endline "put the key-value binding in the map" ;
   Map.put map "foo" (read_line ()) ;

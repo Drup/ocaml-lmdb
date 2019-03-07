@@ -321,6 +321,9 @@ module Map : sig
     ([> `Read ] as 'perm) Env.t ->
     ('key, 'value, 'perm, 'dup) t
 
+  (** [env map] returns the environment of [map]. *)
+  val env : (_, _, 'p, _) t -> 'p Env.t
+
   (** [get map key] returns the first value associated to [key].
       @raise Not_found if the key is not in the map.
   *)

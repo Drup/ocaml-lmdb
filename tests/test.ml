@@ -26,7 +26,7 @@ let[@warning "-26-27"] capabilities () =
     Map.(create nodup
            ~key:Conv.int32_be_as_int
            ~value:Conv.int32_be_as_int
-           ~name:"Capabilities" env)
+           ~name:"Capabilities") env
   in
   let env_rw = (env :> [ `Read | `Write ] Env.t) in
   let env_ro = (env :> [ `Read ] Env.t) in
@@ -49,13 +49,25 @@ let[@warning "-26-27"] capabilities () =
 
 let test_map =
   "Map",
-  let open Map in
   let map =
     Map.(create nodup
            ~key:Conv.int32_be_as_int
            ~value:Conv.int32_be_as_int
-           ~name:"Map" env)
+           ~name:"Map") env
   in
+  let map_dup =
+    Map.(create dup
+           ~key:Conv.int32_be_as_int
+           ~value:Conv.int32_be_as_int
+           ~name:"Map.dup") env
+  in
+  let map_string =
+    Map.(create nodup
+           ~key:Conv.int32_be_as_int
+           ~value:Conv.string
+           ~name:"map.string") env
+  in
+  let open Map in
     [ "append(_dup)", `Quick, begin fun () ->
       Map.drop map;
       let rec loop n =
@@ -79,17 +91,9 @@ let test_map =
       put map ~flags:Flags.no_overwrite 4285 0
     end
   ; "put no_dup_data", `Quick, begin fun () ->
-      ignore @@ Txn.go rw env @@ fun txn ->
-      let map =
-        Map.(create dup ~txn
-               ~key:Conv.int32_be_as_int
-               ~value:Conv.int32_be_as_int
-               ~name:"Map.dup" env)
-      in
-      put ~txn map ~flags:Flags.no_dup_data 4285 0;
+      put map_dup ~flags:Flags.no_dup_data 4285 0;
       check_raises "Exists" Exists
-        (fun () -> put ~txn map ~flags:Flags.no_dup_data 4285 0);
-      Txn.abort txn
+        (fun () -> put map_dup ~flags:Flags.no_dup_data 4285 0);
     end
   ; "get", `Quick,
     ( fun () -> check int "blub" 2 (get map 4285) )
@@ -101,27 +105,21 @@ let test_map =
   ; "stress", `Slow, begin fun () ->
       let buf = String.make 1024 'X' in
       let n = 10000 in
-      let map =
-        create nodup
-          ~key:Conv.int32_be_as_int
-          ~value:Conv.string
-          ~name:"map2" env
-      in
       for _i=1 to 100 do
         for i=0 to n do
-          put map i buf;
+          put map_string i buf;
         done;
         for i=0 to n do
           let v =
             try
-            get map i
+            get map_string i
             with Not_found ->
               failwith ("got Not_found for " ^ string_of_int i)
           in
           if (v <> buf)
           then fail "memory corrupted ?"
         done;
-        drop ~delete:false map
+        drop ~delete:false map_string
       done;
     end
   ]
@@ -133,7 +131,7 @@ let test_cursor =
     Map.(create dup
            ~key:Conv.int32_be_as_int
            ~value:Conv.int32_be_as_int
-           ~name:"Cursor" env)
+           ~name:"Cursor") env
   in
   let check_kv = check (pair int int) in
   [ "wrong map", `Quick,
@@ -153,7 +151,7 @@ let test_cursor =
         Map.(create dup
                ~key:Conv.int32_be_as_int
                ~value:Conv.int32_be_as_int
-               ~name:"Cursor.wrongmap" env)
+               ~name:"Cursor.wrongmap") env
       in
       let map2_ro = (map2 :> (_,_,[ `Read ],_) Map.t) in
       check_raises "wrong cursor" (Invalid_argument "Lmdb.Cursor.fold: Got cursor for wrong map") begin fun () ->
@@ -346,33 +344,32 @@ let test_cursor =
   ]
 
 let test_int =
-  let open Map in
   let make_test name conv =
     name, `Quick,
     begin fun () ->
       let map =
-        (create dup
+        Map.(create dup
            ~key:conv
            ~value:conv
-           ~name env)
+           ~name) env
       in
       let rec loop n =
         if n < 1073741823 then begin
-          (try put ~flags:Flags.append     map n n
+          (try Map.(put ~flags:Flags.append     map n n)
            with Exists -> fail "Ordering on keys");
-          (try put ~flags:Flags.append_dup map 1 n
+          (try Map.(put ~flags:Flags.append_dup map 1 n)
            with Exists -> fail "Ordering on values");
           loop (n / 3 * 4);
         end
       in loop 12;
-      drop ~delete:true map;
+      Map.drop ~delete:true map;
     end
   in
   "Int",
-  [ make_test "int32_be" Conv.int32_be_as_int
-  ; make_test "int32_le" Conv.int32_le_as_int
-  ; make_test "int64_be" Conv.int64_be_as_int
-  ; make_test "int64_le" Conv.int64_le_as_int
+  [ make_test "int32_be" Map.Conv.int32_be_as_int
+  ; make_test "int32_le" Map.Conv.int32_le_as_int
+  ; make_test "int64_be" Map.Conv.int64_be_as_int
+  ; make_test "int64_le" Map.Conv.int64_le_as_int
   ]
 
 let () =
