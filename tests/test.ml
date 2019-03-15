@@ -72,15 +72,28 @@ let test_map =
       Map.drop map;
       let rec loop n =
         if n <= 536870912 then begin
-          let rec loop_dup m =
-            if m <= 536870912 then begin
-              put map ~flags:Flags.append_dup n m;
-              loop_dup (m * 2);
-            end
-          in loop_dup n;
+          put map ~flags:Flags.append_dup n n;
           loop (n * 2);
         end
       in loop 12;
+    end
+  ; "fold_left_all (nodup)", `Quick, begin fun () ->
+      Cursor.fold_left_all 12 map
+        ~f:begin fun n key values ->
+          check int "key" n key;
+          check (array int) "values" [|n|] values;
+          (n * 2)
+        end
+      |> check int "last_key" 805306368
+    end
+  ; "fold_right_all (nodup)", `Quick, begin fun () ->
+      Cursor.fold_right_all map 402653184
+        ~f:begin fun key values n ->
+          check int "key" n key;
+          check (array int) "values" [|n|] values;
+          (n / 2)
+        end
+      |> check int "last_key" 6
     end
   ; "put", `Quick,
     ( fun () -> put map 4285 42 )

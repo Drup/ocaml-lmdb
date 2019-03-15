@@ -635,31 +635,39 @@ module Cursor = struct
 
 
   let get_values_from_first cursor first =
-    let len = Mdb.cursor_count cursor.cursor in
-    if len > 1 && Map.Conv.Flags.(test (dup_sort + dup_fixed) cursor.map.flags)
-    then get_values_multiple cursor len
+    if not Map.Conv.Flags.(test dup_sort cursor.map.flags)
+    then [| first |]
     else begin
-      let values = Array.make len first in
-      for i = 1 to len - 1 do
-        values.(i) <- next_dup cursor
-      done;
-      values
+      let len = Mdb.cursor_count cursor.cursor in
+      if len > 1 && Map.Conv.Flags.(test (dup_sort + dup_fixed) cursor.map.flags)
+      then get_values_multiple cursor len
+      else begin
+        let values = Array.make len first in
+        for i = 1 to len - 1 do
+          values.(i) <- next_dup cursor
+        done;
+        values
+      end
     end
 
   let get_values_from_last cursor last =
-    let len = Mdb.cursor_count cursor.cursor in
-    if len > 1 && Map.Conv.Flags.(test (dup_sort + dup_fixed) cursor.map.flags)
-    then begin
-      let values = get_values_multiple cursor len in
-      cursor_none cursor Ops.first_dup |> ignore;
-      values
-    end
+    if not Map.Conv.Flags.(test dup_sort cursor.map.flags)
+    then [| last |]
     else begin
-      let values = Array.make len last in
-      for i = len - 2 downto 0 do
-        values.(i) <- prev_dup cursor
-      done;
-      values
+      let len = Mdb.cursor_count cursor.cursor in
+      if len > 1 && Map.Conv.Flags.(test (dup_sort + dup_fixed) cursor.map.flags)
+      then begin
+        let values = get_values_multiple cursor len in
+        cursor_none cursor Ops.first_dup |> ignore;
+        values
+      end
+      else begin
+        let values = Array.make len last in
+        for i = len - 2 downto 0 do
+          values.(i) <- prev_dup cursor
+        done;
+        values
+      end
     end
 
   let get_all cursor k =
