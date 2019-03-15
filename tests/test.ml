@@ -47,37 +47,26 @@ let[@warning "-26-27"] capabilities () =
 ;;
 
 
-let test_map =
-  "Map",
+let check_kv = check (pair int int)
+
+let test_nodup =
+  "no duplicates",
   let map =
     Map.(create nodup
            ~key:Conv.int32_be_as_int
            ~value:Conv.int32_be_as_int
            ~name:"Map") env
   in
-  let map_dup =
-    Map.(create dup
-           ~key:Conv.int32_be_as_int
-           ~value:Conv.int32_be_as_int
-           ~name:"Map.dup") env
-  in
-  let map_string =
-    Map.(create nodup
-           ~key:Conv.int32_be_as_int
-           ~value:Conv.string
-           ~name:"map.string") env
-  in
-  let open Map in
-    [ "append(_dup)", `Quick, begin fun () ->
-      Map.drop map;
-      let rec loop n =
-        if n <= 536870912 then begin
-          put map ~flags:Flags.append_dup n n;
-          loop (n * 2);
-        end
-      in loop 12;
+  [ "append", `Quick, begin fun () ->
+    Map.drop map;
+    let rec loop n =
+      if n <= 536870912 then begin
+        Map.(put map ~flags:Flags.append_dup) n n;
+        loop (n * 2);
+      end
+    in loop 12;
     end
-  ; "fold_left_all (nodup)", `Quick, begin fun () ->
+  ; "fold_left_all", `Quick, begin fun () ->
       Cursor.fold_left_all 12 map
         ~f:begin fun n key values ->
           check int "key" n key;
@@ -86,7 +75,7 @@ let test_map =
         end
       |> check int "last_key" 805306368
     end
-  ; "fold_right_all (nodup)", `Quick, begin fun () ->
+  ; "fold_right_all", `Quick, begin fun () ->
       Cursor.fold_right_all map 402653184
         ~f:begin fun key values n ->
           check int "key" n key;
@@ -95,58 +84,81 @@ let test_map =
         end
       |> check int "last_key" 6
     end
+  ; "put first", `Quick, begin fun () ->
+      ignore @@ Cursor.go rw map ?txn:None @@ fun cursor ->
+      for i=0 to 9 do Cursor.put cursor i i done
+    end
+  ; "walk", `Quick, begin fun () ->
+      let open Cursor in
+      ignore @@ go rw map ?txn:None @@ fun cursor ->
+      first cursor              |> check_kv "first"                     (0,0);
+      check_raises "walk before first" Not_found
+        (fun () -> prev cursor |> ignore);
+      next_nodup cursor         |> check_kv  "next_nodup"               (1,1);
+      seek cursor 5             |> check_kv  "seek 5"                   (5,5);
+      prev cursor               |> check_kv  "prev"                     (4,4);
+      current cursor            |> check_kv  "current"                  (4,4);
+      remove cursor;
+      current cursor            |> check_kv  "shift after remove"       (5,5);
+      next_nodup cursor         |> check_kv  "next_nodup"               (6,6);
+      replace cursor 4; (* delete (6,6), add (6,4) *)
+      current cursor            |> check_kv  "replace"                  (6,4);
+      last cursor |> ignore;
+      check_raises "walking beyond last key"                            Not_found
+        (fun () -> next cursor |> ignore);
+    end
   ; "put", `Quick,
-    ( fun () -> put map 4285 42 )
+    ( fun () -> Map.put map 4285 42 )
   ; "put overwrite", `Quick,
-    ( fun () -> put map 4285 2 )
+    ( fun () -> Map.put map 4285 2 )
   ; "put no_overwrite", `Quick, begin fun () ->
       check_raises "Exists" Exists  @@ fun () ->
-      put map ~flags:Flags.no_overwrite 4285 0
-    end
-  ; "put no_dup_data", `Quick, begin fun () ->
-      put map_dup ~flags:Flags.no_dup_data 4285 0;
-      check_raises "Exists" Exists
-        (fun () -> put map_dup ~flags:Flags.no_dup_data 4285 0);
+      Map.(put map ~flags:Flags.no_overwrite) 4285 0
     end
   ; "get", `Quick,
-    ( fun () -> check int "blub" 2 (get map 4285) )
+    ( fun () -> check int "blub" 2 (Map.get map 4285) )
   ; "remove", `Quick,
-    ( fun () -> remove map 4285 )
+    ( fun () -> Map.remove map 4285 )
   ; "Not_found", `Quick, begin fun () ->
-      check_raises "Not_found" Not_found (fun () -> get map 4285 |> ignore)
+      check_raises "Not_found" Not_found (fun () -> Map.get map 4285 |> ignore)
     end
   ; "stress", `Slow, begin fun () ->
+      let map =
+        Map.(create nodup
+               ~key:Conv.int32_be_as_int
+               ~value:Conv.string
+               ~name:"map.string") env
+      in
       let buf = String.make 1024 'X' in
       let n = 10000 in
       for _i=1 to 100 do
         for i=0 to n do
-          put map_string i buf;
+          Map.put map i buf;
         done;
         for i=0 to n do
           let v =
             try
-            get map_string i
+            Map.get map i
             with Not_found ->
               failwith ("got Not_found for " ^ string_of_int i)
           in
           if (v <> buf)
           then fail "memory corrupted ?"
         done;
-        drop ~delete:false map_string
+        Map.drop ~delete:false map
       done;
+      Map.drop ~delete:true map
     end
   ]
 
-let test_cursor =
-  "Cursor",
-  let open Cursor in
+let test_dup =
+  "duplicates",
   let map =
     Map.(create dup
            ~key:Conv.int32_be_as_int
            ~value:Conv.int32_be_as_int
            ~name:"Cursor") env
   in
-  let check_kv = check (pair int int) in
   [ "wrong map", `Quick,
     begin fun () ->
       let env2 =
@@ -169,7 +181,7 @@ let test_cursor =
       let map2_ro = (map2 :> (_,_,[ `Read ],_) Map.t) in
       check_raises "wrong cursor" (Invalid_argument "Lmdb.Cursor.fold: Got cursor for wrong map") begin fun () ->
         ignore @@ Cursor.go ro map2_ro
-          (fun cursor -> fold_left_all ~cursor () (map :> (_,_,[ `Read ],_) Map.t) ~f:(fun _ _ _ -> ()));
+          (fun cursor -> Cursor.fold_left_all ~cursor () (map :> (_,_,[ `Read ],_) Map.t) ~f:(fun _ _ _ -> ()));
       end;
       Env.close env2;
       Sys.remove (filename ^ "2")
@@ -177,12 +189,12 @@ let test_cursor =
   ; "append(_dup)", `Quick,
     begin fun () ->
       Map.drop map;
-      ignore @@ go rw map ?txn:None @@ fun cursor ->
+      ignore @@ Cursor.go rw map ?txn:None @@ fun cursor ->
       let rec loop n =
         if n <= 536870912 then begin
           let rec loop_dup m =
             if m <= 536870912 then begin
-              put cursor ~flags:Flags.append_dup n m;
+              Cursor.(put cursor ~flags:Flags.append_dup) n m;
               loop_dup (m * 2);
             end
           in loop_dup n;
@@ -228,85 +240,71 @@ let test_cursor =
         end
     end
   ; "first", `Quick, begin fun () ->
-      ignore @@ go rw map ?txn:None @@ fun cursor ->
-      first cursor |> check_kv "first 12" (12, 12)
+      ignore @@ Cursor.go rw map ?txn:None @@ fun cursor ->
+      Cursor.first cursor |> check_kv "first 12" (12, 12)
     end
   ; "put first", `Quick, begin fun () ->
-      ignore @@ go rw map ?txn:None @@ fun cursor ->
-      for i=0 to 9 do put cursor i i done
+      ignore @@ Cursor.go rw map ?txn:None @@ fun cursor ->
+      for i=0 to 9 do Cursor.put cursor i i done
     end
-  ; "walk", `Quick, begin fun () ->
-      ignore @@ go rw map ?txn:None @@ fun cursor ->
-      first cursor              |> check_kv "first" (0,0);
-      check_raises "walk before first" Not_found
-        (fun () -> prev cursor |> ignore);
-      next_nodup cursor         |> check_kv  "next_nodup"      (1,1);
-      seek cursor 5             |> check_kv  "seek 5"    (5,5);
-      prev cursor               |> check_kv  "prev"      (4,4);
-      current cursor            |> check_kv  "current"   (4,4);
-      remove cursor;
-      current cursor            |> check_kv  "shift after remove" (5,5);
-      next_nodup cursor         |> check_kv  "next_nodup"      (6,6);
-      replace cursor 4; (* delete (6,6), add (6,4) *)
-      current cursor            |> check_kv  "shift after put_here" (6,4);
-      check_raises "deleted by replace" Not_found
-        (fun () -> seek_dup cursor 6 6);
-      seek_dup cursor 6 4;
-      current cursor            |> check_kv  "replace added" (6,4);
-      last cursor |> ignore;
-      check_raises "walking beyond last key" Not_found
-        (fun () -> next cursor |> ignore);
+  ; "get", `Quick, begin fun () ->
+      ignore @@ Cursor.go rw map ?txn:None @@ fun cursor ->
+      check int "retrieve correct value for key" 5 (Cursor.get cursor 5)
+    end
+  ; "put no_dup_data", `Quick, begin fun () ->
+      Map.(put map ~flags:Flags.no_dup_data) 4285 0;
+      Map.(put map ~flags:Flags.no_dup_data) 4285 1;
+      check_raises "Exists" Exists
+        (fun () -> Map.(put map ~flags:Flags.no_dup_data) 4285 0);
     end
   ; "walk dup", `Quick, begin fun () ->
+      let open Cursor in
       ignore @@ go rw map ?txn:None @@ fun cursor ->
       for i=0 to 9 do put cursor 10 i done;
-      next cursor               |> check_kv  "next"      (12,12);
-      prev cursor               |> check_kv  "prev"      (10,9);
-      first_dup cursor          |> check int "first_dup" 0;
-      next_dup cursor           |> check int "next_dup"  1;
+      next cursor               |> check_kv  "next"                     (12,12);
+      prev cursor               |> check_kv  "prev"                     (10,9);
+      first_dup cursor          |> check int "first_dup"                0;
+      next_dup cursor           |> check int "next_dup"                 1;
       seek_dup cursor 10 5;
-        current cursor          |> check_kv  "seek 5"    (10,5);
-      prev cursor               |> check_kv  "prev"      (10,4);
-      current cursor            |> check_kv  "current"   (10,4);
+        current cursor          |> check_kv  "seek 5"                   (10,5);
+      prev cursor               |> check_kv  "prev"                     (10,4);
+      current cursor            |> check_kv  "current"                  (10,4);
       remove cursor;
       current cursor            |> check_kv  "cursor moved forward after remove" (10,5);
-      first_dup cursor          |> check int "first"     0;
-      check_raises "fail when walking before first dup" Not_found
+      first_dup cursor          |> check int "first"                    0;
+      check_raises "fail when walking before first dup"                 Not_found
         (fun () -> prev_dup cursor |> ignore);
-      last_dup cursor           |> check int "last"      9;
-      check_raises "fail when walking beyond last dup" Not_found
+      last_dup cursor           |> check int "last"                     9;
+      check_raises "fail when walking beyond last dup"                  Not_found
         (fun () -> next_dup cursor |> ignore);
       seek_dup cursor 10 7;
-      current cursor            |> check_kv  "seek_dup"  (10,7);
+      current cursor            |> check_kv  "seek_dup"                 (10,7);
     end
   ; "put", `Quick, begin fun () ->
-      ignore @@ go rw map ?txn:None @@ fun cursor ->
-      put cursor 4285 42
+      ignore @@ Cursor.go rw map ?txn:None @@ fun cursor ->
+      Cursor.put cursor 4285 42
     end
   ; "put no_overwrite", `Quick, begin fun () ->
       check_raises "failure when adding existing key" Exists @@ fun () ->
-      ignore @@ go rw map ?txn:None @@ fun cursor ->
-      put cursor ~flags:Flags.no_overwrite 4285 0
+      ignore @@ Cursor.go rw map ?txn:None @@ fun cursor ->
+      Cursor.(put cursor ~flags:Flags.no_overwrite) 4285 0
     end
   ; "put dup", `Quick, begin fun () ->
-      ignore @@ go rw map ?txn:None @@ fun cursor ->
-      put cursor 4285 42
+      ignore @@ Cursor.go rw map ?txn:None @@ fun cursor ->
+      Cursor.put cursor 4285 42
     end
   ; "put dup no_dup_data", `Quick, begin fun () ->
       check_raises "failure when adding existing key-value" Exists @@ fun () ->
-      ignore @@ go rw map ?txn:None @@ fun cursor ->
-      put cursor ~flags:Flags.no_dup_data 4285 42
-    end
-  ; "get", `Quick, begin fun () ->
-      ignore @@ go rw map ?txn:None @@ fun cursor ->
-      check int "retrieve correct value for key" 42 (get cursor 4285)
+      ignore @@ Cursor.go rw map ?txn:None @@ fun cursor ->
+      Cursor.(put cursor ~flags:Flags.no_dup_data) 4285 42
     end
   ; "Not_found", `Quick, begin fun () ->
       check_raises "failure on non-existing key" Not_found @@ fun () ->
-      ignore @@ go rw map ?txn:None @@ fun cursor ->
-      get cursor 4287 |> ignore
+      ignore @@ Cursor.go rw map ?txn:None @@ fun cursor ->
+      Cursor.get cursor 4287 |> ignore
     end
   ; "first gets first dup", `Quick, begin fun () ->
+      let open Cursor in
       ignore @@ go rw map ?txn:None @@ fun cursor ->
       put cursor ~flags:Flags.(none)       0 0;
       put cursor ~flags:Flags.(append_dup) 0 1;
@@ -315,6 +313,7 @@ let test_cursor =
       first cursor |> check_kv "first dup" (0,0)
     end
   ; "last gets last dup", `Quick, begin fun () ->
+      let open Cursor in
       ignore @@ go rw map ?txn:None @@ fun cursor ->
       put cursor ~flags:Flags.(append + append_dup) 536870913 5;
       put cursor ~flags:Flags.(append_dup) 536870913 6;
@@ -323,6 +322,7 @@ let test_cursor =
       last cursor |> check_kv "last dup" (536870913,7)
     end
   ; "*_all", `Quick, begin fun () ->
+      let open Cursor in
       ignore @@ go rw map ?txn:None @@ fun cursor ->
       get_all cursor 536870913 |> check (array int) "get_all 536870913" [|5;6;7|];
       current cursor |> check_kv "cursor after get_all" (536870913,7);
@@ -342,6 +342,7 @@ let test_cursor =
       current cursor |> check_kv "cursor after current_all" (0,2);
     end
   ; "get_multiple", `Quick, begin fun () ->
+      let open Cursor in
       ignore @@ go rw map ?txn:None @@ fun cursor ->
       seek cursor 0 |> ignore;
       remove cursor ~all:true;
@@ -388,7 +389,7 @@ let test_int =
 let () =
   run "Lmdb"
     [ "capabilities", [ "capabilities", `Quick, capabilities ]
-    ; test_map
-    ; test_cursor
+    ; test_nodup
+    ; test_dup
     ; test_int
     ]
