@@ -168,7 +168,7 @@ let test_dup =
           ~max_maps:10
           (filename ^ "2")
       in
-      check_raises "wrong txn" (Invalid_argument "Lmdb") begin fun () ->
+      check_raises "wrong txn" (Invalid_argument "Lmdb: transaction from wrong environment.") begin fun () ->
         ignore @@ Txn.go ro (env2 :> [ `Read ] Env.t)
           (fun txn -> Map.get ~txn map 0 |> ignore);
       end;

@@ -127,11 +127,15 @@ struct
       | exn -> Mdb.txn_abort txn ; raise exn
 
   (* Used internally for trivial functions, not exported. *)
-  let trivial perm ?txn env f =
+  let trivial perm ?txn e f =
     match txn with
-    | Some txn -> f txn
+    | Some txn ->
+      if e != env txn
+      (* Cave: this error is not caught by lmdb *)
+      then invalid_arg "Lmdb: transaction from wrong environment."
+      else f txn
     | None ->
-      match go perm env f with
+      match go perm e f with
       | None -> assert false
       | Some x -> x
 end
@@ -412,10 +416,9 @@ module Map = struct
       let alloc len =
         if Mdb.Block_option.is_some !va_opt then
           invalid_arg "Lmdb: converting function tried to allocate twice.";
-        va_opt :=
-          Mdb.Block_option.some @@
-          Mdb.put_reserve txn map.dbi ka len flags;
-        Mdb.Block_option.get_unsafe !va_opt
+        let va = Mdb.put_reserve txn map.dbi ka len flags in
+        va_opt := Mdb.Block_option.some va;
+        va
       in
       let va = Value.write alloc v in
       if Mdb.Block_option.is_some !va_opt
