@@ -4,3 +4,4 @@ api.docdir
 *.native
 setup.data
 setup.log
+.merlin

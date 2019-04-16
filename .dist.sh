@@ -10,26 +10,19 @@
 set -e
 
 # Extract project parameters from _oasis
-NAME=`oasis query Name 2> /dev/null`
-VERSION=`oasis query Version 2> /dev/null`
+NAME=`opam show -f name . 2>/dev/null`
+VERSION=`opam show -f version . 2>/dev/null`
 PREFIX=$NAME-$VERSION
 ARCHIVE=$(pwd)/$PREFIX.tar.gz
 
 # Clean setup.data and other generated files.
-make clean
-make distclean
+dune clean
 
 # Create a branch for the release
 git checkout -b release-$VERSION
 
-# Generate files
-oasis setup
-
 # Remove this script and dev-files
 rm -f .dist.sh .travis*
-
-# Fix the version in the opam files.
-sed -i -e "s/version: \"dev\"/version: \"${VERSION}\"/" *.opam
 
 # Commit
 git add --all --force

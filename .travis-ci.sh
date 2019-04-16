@@ -15,10 +15,8 @@ then
 fi
 
 eval `opam config env`
-opam install lmdb --with-test --deps-only -v
-./configure --enable-docs --enable-tests
-make doc
-make test
+opam install lmdb --with-test --with-doc --deps-only -v
+dune runtest
 
 if [ -z "$TRAVIS" \
      -o "$TRAVIS_PULL_REQUEST" != "false" \
@@ -40,7 +38,7 @@ git clone https://${GH_TOKEN}@github.com/${TRAVIS_REPO_SLUG} $DOCDIR 2>&1 | sed 
 git -C $DOCDIR checkout gh-pages || git -C $DOCDIR checkout --orphan gh-pages
 
 rm -rf $DOCDIR/dev/*
-cp _build/*.docdir/* $DOCDIR/dev
+cp ls _build/default/_doc/_html/* $DOCDIR/dev
 
 git -C $DOCDIR config user.email "travis@travis-ci.org"
 git -C $DOCDIR config user.name "Travis"
