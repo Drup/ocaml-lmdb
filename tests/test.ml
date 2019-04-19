@@ -171,6 +171,8 @@ let test_dup =
       check_raises "wrong txn" (Invalid_argument "Lmdb: transaction from wrong environment.") begin fun () ->
         ignore @@ Txn.go ~perm:Ro (env2 :> [ `Read ] Env.t)
           (fun txn -> Map.get ~txn map 0 |> ignore);
+        ignore @@ Txn.go ~perm:Rw env
+          (fun (txn : [> `Write] Txn.t) -> Map.get ~txn map 0 |> ignore);
       end;
       let map2 =
         Map.(create dup
