@@ -43,15 +43,9 @@ module Mdb = Lmdb_bindings
     cursors. The following values are used to request read-only or read-write
     permissions on environments, transactions and cursors.
 *)
-
-type 'a perm constraint 'a = [< `Read | `Write ]
-
-(** Request read-only access. *)
-val ro : [ `Read ] perm
-
-(** Request read-write access. *)
-val rw : [ `Read | `Write ] perm
-
+type 'a perm =
+  | Ro : [ `Read ] perm
+  | Rw : [ `Read | `Write ] perm
 
 (** {2 Database} *)
 
@@ -61,7 +55,7 @@ module Env : sig
 
   module Flags = Mdb.EnvFlags
 
-  (** [create perm path] creates an environment with {!ro} or {!rw} permissions
+  (** [create perm path] creates an environment with {!Ro} or {!Rw} permissions
       with {e data} and {e lock} files in the already existing directory [path].
       If no separate directory is desired, {!Flags.no_subdir} can be passed.
 
@@ -74,8 +68,8 @@ module Env : sig
       @param mode The UNIX permissions to set on created files and semaphores. Default is [0o755].
   *)
   val create :
-    'perm perm -> ?max_readers:int -> ?map_size:int -> ?max_maps:int ->
-    ?flags:Flags.t -> ?mode:int -> string -> 'perm t
+    ?max_readers:int -> ?map_size:int -> ?max_maps:int ->
+    ?flags:Flags.t -> ?mode:int -> 'perm perm -> string -> 'perm t
 
 
 

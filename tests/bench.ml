@@ -1,7 +1,7 @@
 open Lmdb
 
 let env =
-  Env.create rw
+  Env.create Rw
     ~flags:Env.Flags.(no_subdir + no_sync + write_map + no_lock + no_mem_init)
     ~map_size:104857600
     ~max_maps:10
