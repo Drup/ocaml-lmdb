@@ -1,3 +1,10 @@
+if [ "$TRAVIS_OS_NAME" = "linux" ]
+then
+  wget http://mirrors.kernel.org/ubuntu/pool/universe/l/lmdb/liblmdb0_0.9.21-1_amd64.deb
+  wget http://mirrors.kernel.org/ubuntu/pool/universe/l/lmdb/liblmdb-dev_0.9.21-1_amd64.deb
+  sudo dpkg -i liblmdb0_0.9.21-1_amd64.deb liblmdb-dev_0.9.21-1_amd64.deb
+fi
+
 bash -ex .travis-opam.sh
 
 ## Documentation stuff
@@ -7,16 +14,9 @@ set -e
 set +x
 set -o errexit -o nounset
 
-if [ "$TRAVIS_OS_NAME" = "linux" ]
-then
-  wget http://mirrors.kernel.org/ubuntu/pool/universe/l/lmdb/liblmdb0_0.9.21-1_amd64.deb
-  wget http://mirrors.kernel.org/ubuntu/pool/universe/l/lmdb/liblmdb-dev_0.9.21-1_amd64.deb
-  sudo dpkg -i liblmdb0_0.9.21-1_amd64.deb liblmdb-dev_0.9.21-1_amd64.deb
-fi
-
 eval `opam config env`
 opam install lmdb --with-test --with-doc --deps-only -v
-dune runtest
+dune runtest --force
 
 if [ -z "$TRAVIS" \
      -o "$TRAVIS_PULL_REQUEST" != "false" \

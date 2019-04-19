@@ -22,3 +22,8 @@
  (libraries alcotest lmdb)
  (action (run %{test} -q))
 )
+
+(alias
+ (name runtest)
+ (action (run ./version.exe))
+)
