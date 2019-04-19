@@ -6,9 +6,9 @@ exception Not_found = Not_found
 exception Exists = Mdb.Exists
 exception Error = Mdb.Error
 
-type 'a perm = Ro | Rw constraint 'a = [< `Read | `Write ]
-let ro :[ `Read ] perm = Ro
-let rw :[ `Read | `Write ] perm = Rw
+type 'a perm =
+  | Ro : [ `Read ] perm
+  | Rw : [ `Read | `Write ] perm
 
 let version = Mdb.version
 
@@ -23,7 +23,7 @@ module Env = struct
 
   module Flags = Mdb.EnvFlags
 
-  let create (perm :'perm perm)
+  let create (type p) (perm : p perm)
       ?max_readers ?map_size ?max_maps
       ?(flags=Flags.none) ?(mode=0o755)
       path =
@@ -111,7 +111,7 @@ struct
   let env = Mdb.txn_env
 
   let abort txn = raise (Abort (Obj.repr txn))
-  let go perm ?txn:parent env f =
+  let go (type p) (perm : p perm) ?txn:parent env f =
     let flags =
       match perm with
       | Rw -> Env.Flags.none
@@ -316,7 +316,7 @@ module Map = struct
     =
     let module Key = (val key) in
     let module Value = (val value) in
-    let create_of_perm perm =
+    let create_of_perm (type p) (perm :p perm) =
       match perm with
       | Ro -> Conv.Flags.none
       | Rw -> Conv.Flags.create
@@ -360,25 +360,25 @@ module Map = struct
       ?name env
 
   let stats ?txn {env; dbi; _} =
-    Txn.trivial ro
+    Txn.trivial Ro
       ?txn:(txn :> [ `Read ] Txn.t option)
       (env :> [ `Read ] Env.t)
     @@ fun txn ->
     Mdb.dbi_stat txn dbi
 
   let _flags ?txn {env; dbi; _} =
-    Txn.trivial ro env ?txn @@ fun txn ->
+    Txn.trivial Ro env ?txn @@ fun txn ->
     Mdb.dbi_flags txn dbi
 
   let drop ?txn ?(delete=false) ({dbi ;env ;_ } as map) =
     if delete then map.dbi <- Mdb.invalid_dbi;
-    Txn.trivial rw ?txn env @@ fun txn ->
+    Txn.trivial Rw ?txn env @@ fun txn ->
     Mdb.drop txn dbi delete
 
   let get (type key value) map ?txn k =
     let module Key = (val map.key :Conv.S with type t = key) in
     let module Value = (val map.value :Conv.S with type t = value) in
-    Txn.trivial ro
+    Txn.trivial Ro
       ?txn:(txn :> [ `Read ] Txn.t option)
       (map.env :> [ `Read ] Env.t)
     @@ fun txn ->
@@ -394,12 +394,12 @@ module Map = struct
     then begin
       let ka = Key.write Bigstring.create k in
       let va = Value.write Bigstring.create v in
-      Txn.trivial rw ?txn map.env @@ fun txn ->
+      Txn.trivial Rw ?txn map.env @@ fun txn ->
       Mdb.put txn map.dbi ka va flags
     end
     else begin
       let ka = Key.write Bigstring.create k in
-      Txn.trivial rw ?txn map.env @@ fun txn ->
+      Txn.trivial Rw ?txn map.env @@ fun txn ->
       let va_opt = ref Mdb.Block_option.none in
       let alloc len =
         if Mdb.Block_option.is_some !va_opt then
@@ -426,14 +426,14 @@ module Map = struct
         let module Value = (val map.value :Conv.S with type t = value) in
         Mdb.Block_option.some @@ Value.write Bigstring.create value
     in
-    Txn.trivial rw ?txn map.env @@ fun txn ->
+    Txn.trivial Rw ?txn map.env @@ fun txn ->
     Mdb.del txn map.dbi ka va
 
   let compare_key (type key) map ?txn x y =
     let module Key = (val map.key :Conv.S with type t = key) in
     let xa = Key.write Bigstring.create x in
     let ya = Key.write Bigstring.create y in
-    Txn.trivial ro
+    Txn.trivial Ro
       ?txn:(txn :> [ `Read ] Txn.t option)
       (map.env :> [ `Read ] Env.t)
     @@ fun txn ->
@@ -446,7 +446,7 @@ module Map = struct
     fun x y ->
     let xa = Value.write Bigstring.create x in
     let ya = Value.write Bigstring.create y in
-    Txn.trivial ro
+    Txn.trivial Ro
       ?txn:(txn :> [ `Read ] Txn.t option)
       (map.env :> [ `Read ] Env.t)
     @@ fun txn ->
@@ -750,7 +750,7 @@ module Cursor = struct
             loop acc
         in loop acc
     in
-    trivial ro
+    trivial Ro
       ?cursor:(cursor :> (_, _, [ `Read ], 'dup) t option)
       (map :> (_, _, [ `Read ], 'dup) Map.t)
       fold
