@@ -1,7 +1,3 @@
 _build
-api.docdir
-*.byte
-*.native
-setup.data
-setup.log
-.merlin
+*/.merlin
+*.install

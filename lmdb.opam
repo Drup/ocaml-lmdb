@@ -1,7 +1,10 @@
 opam-version: "2.0"
 maintainer: "Gabriel Radanne <drupyog@zoho.com>"
 synopsis: "Bindings for LMDB, a fast in-file database with ACID transactions"
-authors: "Gabriel Radanne <drupyog@zoho.com>"
+authors: [
+  "Gabriel Radanne <drupyog@zoho.com>"
+  "Christopher Zimmermann <christopher@gmerlin.de>"
+]
 license: "MIT"
 homepage: "https://github.com/Drup/ocaml-lmdb"
 bug-reports: "https://github.com/Drup/ocaml-lmdb/issues"
@@ -9,21 +12,16 @@ dev-repo: "git+https://github.com/Drup/ocaml-lmdb.git"
 doc: "https://drup.github.io/ocaml-lmdb/dev/Lmdb.html"
 tags: [ "clib:lmdb" "database" ]
 build: [
-  ["ocaml" "setup.ml" "-configure" "--prefix" prefix]
-  ["ocaml" "setup.ml" "-build"]
-  ["ocaml" "setup.ml" "-test"] {with-test}
-  ["ocaml" "setup.ml" "-doc"] {with-doc}
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
 ]
-install: ["ocaml" "setup.ml" "-install"]
-remove: ["ocamlfind" "remove" "lmdb"]
 depends: [
-  "base-bytes"
+  "ocaml" {>= "4.03"}
   "bigstringaf"
-  "ocamlfind" {build}
+  "dune" {build}
   "alcotest" {with-test}
   "benchmark" {with-test}
-
-  "oasis" {dev & build}
 ]
 
 depexts: [

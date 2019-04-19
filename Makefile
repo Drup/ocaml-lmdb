@@ -1,50 +1,27 @@
-# OASIS_START
-# DO NOT EDIT (digest: a3c674b4239234cbbe53afe090018954)
+.PHONY: default
+default: build
 
-SETUP = ocaml setup.ml
+.PHONY: build
+build: 
+	dune build @install
 
-build: setup.data
-	$(SETUP) -build $(BUILDFLAGS)
+.PHONY: test
+test:
+	dune runtest
 
-doc: setup.data build
-	$(SETUP) -doc $(DOCFLAGS)
+.PHONY: bench
+bench:
+	dune build --profile=release @bench
 
-test: setup.data build
-	$(SETUP) -test $(TESTFLAGS)
-
-all:
-	$(SETUP) -all $(ALLFLAGS)
-
-install: setup.data
-	$(SETUP) -install $(INSTALLFLAGS)
-
-uninstall: setup.data
-	$(SETUP) -uninstall $(UNINSTALLFLAGS)
-
-reinstall: setup.data
-	$(SETUP) -reinstall $(REINSTALLFLAGS)
-
+.PHONY: clean
 clean:
-	$(SETUP) -clean $(CLEANFLAGS)
+	dune clean
 
-distclean:
-	$(SETUP) -distclean $(DISTCLEANFLAGS)
+.PHONY: doc
+doc:
+	dune build @doc
 
-setup.data:
-	$(SETUP) -configure $(CONFIGUREFLAGS)
-
-configure:
-	$(SETUP) -configure $(CONFIGUREFLAGS)
-
-.PHONY: build doc test all install uninstall reinstall clean distclean configure
-
-# OASIS_STOP
-
-NAME    = $(shell grep 'Name:' _oasis    | sed 's/Name: *//')
-VERSION = $(shell grep '^Version:' _oasis | sed 's/Version: *//')
-
-# doc update
-
+NAME=lmdb
 DOCDIR=.gh-pages
 
 $(DOCDIR)/.git:
@@ -54,14 +31,9 @@ $(DOCDIR)/.git:
 	)
 
 gh-pages: $(DOCDIR)/.git doc
-	rm -f $(DOCDIR)/dev/*
-	cp api.docdir/* $(DOCDIR)/dev/
-	git -C $(DOCDIR) add --all dev
-	git -C $(DOCDIR) commit -a -m "Doc updates"
+	git -C $(DOCDIR) pull
+	cp -r _build/default/_doc/_html/* $(DOCDIR)/dev/
+	git -C $(DOCDIR) add --all 
+	git -C $(DOCDIR) commit -a -m "gh-page updates"
 	git -C $(DOCDIR) push origin gh-pages
 
-# release
-
-release:
-	git tag -a $(VERSION) -m "Version $(VERSION)."
-	git push origin $(VERSION)

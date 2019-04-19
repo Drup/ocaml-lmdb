@@ -1,8 +1,0 @@
-S src
-S tests
-B _build/src
-B _build/tests
-
-PKG bigstringaf
-PKG alcotest
-PKG benchmark
