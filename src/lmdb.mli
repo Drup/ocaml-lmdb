@@ -33,7 +33,7 @@ Map.put map "Bactrian camel" "Elegant and beautiful animal with two humps."
 
 (** {2 Raw bindings} *)
 
-module Mdb :module type of Lmdb_bindings
+module Mdb = Lmdb_bindings
 
 
 (** {2 Permissions} *)
@@ -59,7 +59,7 @@ val rw : [ `Read | `Write ] perm
 module Env : sig
   type -'perm t constraint 'perm = [< `Read | `Write ]
 
-  module Flags : module type of Lmdb_bindings.EnvFlags
+  module Flags = Mdb.EnvFlags
 
   (** [create perm path] creates an environment with {!ro} or {!rw} permissions
       with {e data} and {e lock} files in the already existing directory [path].
@@ -181,7 +181,7 @@ module Map : sig
         You probably won't need those flags since the converters provided in {!
         Conv} will already make appropriate use of these flags.
     *)
-    module Flags : module type of Lmdb_bindings.DbiFlags
+    module Flags = Lmdb_bindings.DbiFlags
 
     (** Signature of a converter module *)
     module type S = sig
@@ -329,7 +329,7 @@ module Map : sig
   *)
   val get : ('key, 'value, [> `Read ], _) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'value
 
-  module Flags : module type of Lmdb_bindings.PutFlags
+  module Flags = Lmdb_bindings.PutFlags
 
   (** [put map key value] adds [value] to [key].
 
@@ -449,7 +449,7 @@ end
 
   (** {2 Modification} *)
 
-  module Flags : module type of Lmdb_bindings.PutFlags
+  module Flags = Lmdb_bindings.PutFlags
 
   (** [put cursor key value] adds [value] to [key] and moves the cursor to
       its position.
