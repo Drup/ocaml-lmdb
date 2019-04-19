@@ -33,7 +33,7 @@ let[@warning "-26-27"] capabilities () =
   (* let env_rw = (env_ro :> [ `Read | `Write ] Env.t) in <- FAILS *)
   (* ignore @@ (rw :> [ `Read ] Cap.t); <- FAILS *)
   (* ignore @@ (ro :> [ `Read | `Write ] cap); <- FAILS *)
-  ignore @@ Txn.go Rw env_rw ?txn:None @@ fun txn_rw ->
+  ignore @@ Txn.go env_rw ?txn:None @@ fun txn_rw ->
   let txn_ro = (txn_rw :> [ `Read ] Txn.t) in
   Map.put ~txn:txn_rw map 4 4;
   (* Map.put ~txn:txn_ro map 4 4; <- FAILS *)
@@ -169,7 +169,7 @@ let test_dup =
           filename
       in
       check_raises "wrong txn" (Invalid_argument "Lmdb: transaction from wrong environment.") begin fun () ->
-        ignore @@ Txn.go Ro (env2 :> [ `Read ] Env.t)
+        ignore @@ Txn.go ~perm:Ro (env2 :> [ `Read ] Env.t)
           (fun txn -> Map.get ~txn map 0 |> ignore);
       end;
       let map2 =

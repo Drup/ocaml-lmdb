@@ -86,7 +86,7 @@ sig
   type -'perm t = 'perm Mdb.txn constraint 'perm = [< `Read | `Write ]
 
   val go :
-    'perm perm ->
+    ?perm:'perm perm ->
     ?txn:'perm t ->
     'perm Env.t ->
     ('perm t -> 'a) -> 'a option
@@ -111,13 +111,16 @@ struct
 
   let env = Mdb.txn_env
 
+  let flags_of_env (type p) (perm: p perm option) env =
+    match perm with
+    | Some Rw -> Env.Flags.none
+    | Some Ro -> Env.Flags.read_only
+    | None -> Env.Flags.(read_only * Env.flags env)
+
   let abort txn = raise (Abort (Obj.repr txn))
-  let go (type p) (perm : p perm) ?txn:parent env f =
-    let flags =
-      match perm with
-      | Rw -> Env.Flags.none
-      | Ro -> Env.Flags.read_only
-    in
+
+  let go (type p) ?(perm:p perm option) ?txn:parent env f =
+    let flags = flags_of_env perm env in
     let txn = Mdb.txn_begin env parent flags in
     try
       let x = f txn in
@@ -136,7 +139,7 @@ struct
       then invalid_arg "Lmdb: transaction from wrong environment."
       else f txn
     | None ->
-      match go perm e f with
+      match go ~perm e f with
       | None -> assert false
       | Some x -> x
 end

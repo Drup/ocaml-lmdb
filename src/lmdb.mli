@@ -131,7 +131,7 @@ end
 ]}
   *)
   val go :
-    'perm perm ->
+    ?perm:'perm perm ->
     ?txn:'perm t ->
     'perm Env.t ->
     ('perm t -> 'a) -> 'a option
