@@ -5,6 +5,8 @@ then
   sudo dpkg -i liblmdb0_0.9.21-1_amd64.deb liblmdb-dev_0.9.21-1_amd64.deb
 fi
 
+export OCAMLRUNPARAM+=b
+
 bash -ex .travis-opam.sh
 
 ## Documentation stuff
@@ -13,10 +15,6 @@ set -e
 # Make sure we're not echoing any sensitive data
 set +x
 set -o errexit -o nounset
-
-eval `opam config env`
-opam install lmdb --with-test --with-doc --deps-only -v
-dune runtest --force
 
 if [ -z "$TRAVIS" \
      -o "$TRAVIS_PULL_REQUEST" != "false" \
@@ -29,6 +27,10 @@ else
   echo "Updating docs on Github pages..."
 fi
 
+eval `opam config env`
+opam install lmdb --with-test --with-doc --deps-only --verbose --yes
+dune build @doc
+
 DOCDIR=.gh-pages
 
 # Error out if $GH_TOKEN is empty or unset
@@ -38,7 +40,7 @@ git clone https://${GH_TOKEN}@github.com/${TRAVIS_REPO_SLUG} $DOCDIR 2>&1 | sed 
 git -C $DOCDIR checkout gh-pages || git -C $DOCDIR checkout --orphan gh-pages
 
 rm -rf $DOCDIR/dev/*
-cp ls _build/default/_doc/_html/* $DOCDIR/dev
+cp -R _build/default/_doc/_html/* $DOCDIR/dev
 
 git -C $DOCDIR config user.email "travis@travis-ci.org"
 git -C $DOCDIR config user.name "Travis"

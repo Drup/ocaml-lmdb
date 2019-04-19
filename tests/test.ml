@@ -8,7 +8,7 @@ let filename =
     then tmp_filename base suffix (n+1)
     else name
   in
-  tmp_filename "/tmp/lmdb_test" ".db" 0
+  tmp_filename "lmdb_test" ".db" 0
 
 let env =
   Env.create rw
@@ -162,11 +162,11 @@ let test_dup =
   [ "wrong map", `Quick,
     begin fun () ->
       let env2 =
-        Env.create rw
+        Env.create ro
           ~flags:Env.Flags.(no_subdir + no_sync + no_lock + no_mem_init)
           ~map_size:104857600
           ~max_maps:10
-          (filename ^ "2")
+          filename
       in
       check_raises "wrong txn" (Invalid_argument "Lmdb: transaction from wrong environment.") begin fun () ->
         ignore @@ Txn.go ro (env2 :> [ `Read ] Env.t)
@@ -184,7 +184,6 @@ let test_dup =
           (fun cursor -> Cursor.fold_left_all ~cursor () (map :> (_,_,[ `Read ],_) Map.t) ~f:(fun _ _ _ -> ()));
       end;
       Env.close env2;
-      Sys.remove (filename ^ "2")
     end
   ; "append(_dup)", `Quick,
     begin fun () ->

@@ -9,6 +9,10 @@ env:
   - secure: YWrGjdp0SFP1/MS6tB5MXy5QCuGbT+XQOG4eKHERegSiVdTVr/mBKRelmmMiSEpbRHwXpuNfNA4sYFfMsyV+2bf6W0cqQTXeITbm0CewuLxdxN0CZxyfIkcarhHLTq65xiKqWQpVPkjjP6gftmszWMKs2Xev/JwCWS4dbK/oihI=
 matrix:
   include:
+  - os: osx
+    env: OCAML_VERSION=4.07
+  - os: linux
+    env: OCAML_VERSION=4.07 DOC=true
   - os: linux
     env: OCAML_VERSION=4.03
   - os: linux
@@ -17,7 +21,3 @@ matrix:
     env: OCAML_VERSION=4.05
   - os: linux
     env: OCAML_VERSION=4.06
-  - os: linux
-    env: OCAML_VERSION=4.07 DOC=true
-  - os: osx
-    env: OCAML_VERSION=4.07
