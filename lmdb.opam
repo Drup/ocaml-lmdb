@@ -19,10 +19,8 @@ remove: ["ocamlfind" "remove" "lmdb"]
 depends: [
   "base-bytes"
   "bigstringaf"
-  "ctypes"
-  "ctypes-foreign"
-  "unix-type-representations"
   "ocamlfind" {build}
+  "alcotest" {with-test}
   "benchmark" {with-test}
 
   "oasis" {dev & build}

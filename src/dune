@@ -1,0 +1,10 @@
+(library
+ (name lmdb)
+ (public_name lmdb)
+ (synopsis "wrapper for the lmdb embedded database")
+ (flags :standard -safe-string -thread)
+ (libraries bigstringaf)
+ (c_flags :standard -Wall -Wextra -Wno-unused-parameter -pedantic -std=c99)
+ (c_names lmdb_stubs)
+ (c_library_flags -llmdb)
+)

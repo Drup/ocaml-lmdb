@@ -1,4 +1,75 @@
 # OASIS_START
+# DO NOT EDIT (digest: 4811020a00419a3605708e822b762ff1)
+# Ignore VCS directories, you can use the same kind of rule outside
+# OASIS_START/STOP if you want to exclude directories that contains
+# useless stuff for the build process
+true: annot, bin_annot
+<**/.svn>: -traverse
+<**/.svn>: not_hygienic
+".bzr": -traverse
+".bzr": not_hygienic
+".hg": -traverse
+".hg": not_hygienic
+".git": -traverse
+".git": not_hygienic
+"_darcs": -traverse
+"_darcs": not_hygienic
+# Library lmdb
+"src/lmdb.cmxs": use_lmdb
+<src/lmdb.{cma,cmxa}>: oasis_library_lmdb_cclib
+"src/liblmdb_stubs.lib": oasis_library_lmdb_cclib
+"src/dlllmdb_stubs.dll": oasis_library_lmdb_cclib
+"src/liblmdb_stubs.a": oasis_library_lmdb_cclib
+"src/dlllmdb_stubs.so": oasis_library_lmdb_cclib
+<src/lmdb.{cma,cmxa}>: use_liblmdb_stubs
+<src/*.ml{,i,y}>: pkg_bigstringaf
+<src/*.ml{,i,y}>: pkg_ctypes
+"src/lmdb_cstubs.c": pkg_bigstringaf
+"src/lmdb_cstubs.c": pkg_ctypes
+"src/lmdb_cstubs.c": pkg_ctypes.foreign
+"src/lmdb_cstubs.c": pkg_ctypes.stubs
+"src/lmdb_cstubs.c": pkg_unix-type-representations
+# Executable lmdb_gen
+"src/lmdb_bindgen.byte": pkg_ctypes.foreign
+"src/lmdb_bindgen.byte": pkg_ctypes.stubs
+"src/lmdb_bindgen.byte": pkg_unix-type-representations
+<src/*.ml{,i,y}>: pkg_ctypes.foreign
+# Executable lmdb_typegen
+"src/lmdb_typegen.byte": pkg_ctypes.stubs
+"src/lmdb_typegen.byte": pkg_unix-type-representations
+<src/*.ml{,i,y}>: pkg_ctypes.stubs
+<src/*.ml{,i,y}>: pkg_unix-type-representations
+# Executable version
+<tests/version.{native,byte}>: pkg_bigstringaf
+<tests/version.{native,byte}>: pkg_ctypes
+<tests/version.{native,byte}>: pkg_ctypes.foreign
+<tests/version.{native,byte}>: pkg_ctypes.stubs
+<tests/version.{native,byte}>: pkg_unix-type-representations
+<tests/version.{native,byte}>: use_lmdb
+# Executable simple_db
+<tests/simple_db.{native,byte}>: pkg_bigstringaf
+<tests/simple_db.{native,byte}>: pkg_ctypes
+<tests/simple_db.{native,byte}>: pkg_ctypes.foreign
+<tests/simple_db.{native,byte}>: pkg_ctypes.stubs
+<tests/simple_db.{native,byte}>: pkg_unix-type-representations
+<tests/simple_db.{native,byte}>: use_lmdb
+# Executable test
+<tests/test.{native,byte}>: pkg_alcotest
+<tests/test.{native,byte}>: pkg_benchmark
+<tests/test.{native,byte}>: pkg_bigstringaf
+<tests/test.{native,byte}>: pkg_ctypes
+<tests/test.{native,byte}>: pkg_ctypes.foreign
+<tests/test.{native,byte}>: pkg_ctypes.stubs
+<tests/test.{native,byte}>: pkg_unix-type-representations
+<tests/test.{native,byte}>: use_lmdb
+<tests/*.ml{,i,y}>: pkg_alcotest
+<tests/*.ml{,i,y}>: pkg_benchmark
+<tests/*.ml{,i,y}>: pkg_bigstringaf
+<tests/*.ml{,i,y}>: pkg_ctypes
+<tests/*.ml{,i,y}>: pkg_ctypes.foreign
+<tests/*.ml{,i,y}>: pkg_ctypes.stubs
+<tests/*.ml{,i,y}>: pkg_unix-type-representations
+<tests/*.ml{,i,y}>: use_lmdb
 # OASIS_STOP
 
 true : bin_annot, safe_string, strict_sequence, short_paths

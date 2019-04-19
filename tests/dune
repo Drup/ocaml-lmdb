@@ -1,0 +1,24 @@
+(executable
+ (name simple_db)
+ (modules simple_db)
+ (libraries lmdb)
+)
+
+(executable
+ (name version)
+ (modules version)
+ (libraries lmdb)
+)
+
+(executable
+ (name bench)
+ (modules bench)
+ (libraries benchmark lmdb)
+)
+
+(test
+ (name test)
+ (modules test)
+ (libraries alcotest lmdb)
+ (action (run %{test} -q))
+)
