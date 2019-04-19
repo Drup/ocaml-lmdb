@@ -27,3 +27,9 @@
  (name runtest)
  (action (run ./version.exe))
 )
+
+(alias
+ (name bench)
+ (deps bench.exe (universe))
+ (action (run ./bench.exe))
+)
