@@ -210,7 +210,10 @@ module Map : sig
     end
 
     (** ['a t] is a first-class converter module. *)
-    type 'a t = (module S with type t = 'a)
+    type 'a t
+
+    val mk : (module S with type t = 'a) -> 'a t
+    val as_module : 'a t -> (module S with type t = 'a)
 
     (** {2 Predefined converters } *)
 

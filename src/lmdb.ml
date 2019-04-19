@@ -157,7 +157,22 @@ module Map = struct
       val write : (int -> Bigstring.t) -> t -> Bigstring.t
     end
 
-    type 'a t = (module S with type t = 'a)
+    type 'a t = {
+      flags : Flags.t ;
+      read : Bigstring.t -> 'a ;
+      write : (int -> Bigstring.t) -> 'a -> Bigstring.t ;
+    }
+    let mk (type a) (module M : S with type t = a) =
+      let open M in { flags ; read ; write }
+    let as_module (type a) { flags ; read ; write } =
+      let module M = struct
+        type t = a
+        let flags = flags
+        let read = read
+        let write = write
+      end
+      in
+      (module M : S with type t = a)
 
     let is_int_size n = n = Mdb.sizeof_int || n = Mdb.sizeof_size_t
 
@@ -261,14 +276,14 @@ module Map = struct
 
     module Int64_be_as_int = Int64_as_int (Int64_be)
     module Int64_le_as_int = Int64_as_int (Int64_le)
-    let int32_be        = (module Int32_be        :S with type t = Int32.t)
-    let int32_le        = (module Int32_le        :S with type t = Int32.t)
-    let int64_be        = (module Int64_be        :S with type t = Int64.t)
-    let int64_le        = (module Int64_le        :S with type t = Int64.t)
-    let int32_be_as_int = (module Int32_be_as_int :S with type t = int)
-    let int32_le_as_int = (module Int32_le_as_int :S with type t = int)
-    let int64_be_as_int = (module Int64_be_as_int :S with type t = int)
-    let int64_le_as_int = (module Int64_le_as_int :S with type t = int)
+    let int32_be        = mk (module Int32_be)
+    let int32_le        = mk (module Int32_le)
+    let int64_be        = mk (module Int64_be)
+    let int64_le        = mk (module Int64_le)
+    let int32_be_as_int = mk (module Int32_be_as_int)
+    let int32_le_as_int = mk (module Int32_le_as_int)
+    let int64_be_as_int = mk (module Int64_be_as_int)
+    let int64_le_as_int = mk (module Int64_le_as_int)
 
     module String = struct
       type t = string
@@ -280,7 +295,7 @@ module Map = struct
         Bigstring.blit_from_string s ~src_off:0 a ~dst_off:0 ~len;
         a
     end
-    let string = (module String :S with type t = string)
+    let string = mk (module String)
 
     module Bigstring = struct
       type t = Bigstring.t
@@ -288,15 +303,15 @@ module Map = struct
       let read b = b
       let write _ b = b
     end
-    let bigstring = (module Bigstring :S with type t = bigstring)
+    let bigstring = mk (module Bigstring)
   end
 
   type ('k, 'v, -'perm, -'dup) t =
     { env               :'perm Env.t
     ; mutable dbi       :Mdb.dbi
     ; flags             :Mdb.DbiFlags.t
-    ; key               :(module Conv.S with type t = 'k)
-    ; value             :(module Conv.S with type t = 'v)
+    ; key               : 'k Conv.t
+    ; value             : 'v Conv.t
     }
     constraint 'perm = [< `Read | `Write ]
     constraint 'dup = [< `Dup | `Uni ]
@@ -317,17 +332,15 @@ module Map = struct
       (env      :'perm Env.t)
     :(key, value, 'perm, 'dup) t
     =
-    let module Key = (val key) in
-    let module Value = (val value) in
     let flags =
       let open Conv.Flags in
       create +
-      Key.flags * (reverse_key + integer_key) +
+      key.flags * (reverse_key + integer_key) +
       match dup with
       | Nodup -> Conv.Flags.none
       | Dup ->
         dup_sort +
-        Value.flags * (dup_fixed + integer_dup + reverse_dup)
+        value.flags * (dup_fixed + integer_dup + reverse_dup)
     in
     let dbi, flags =
       Txn.trivial Rw env ?txn @@ fun txn ->
@@ -391,30 +404,27 @@ module Map = struct
     Txn.trivial Rw ?txn env @@ fun txn ->
     Mdb.drop txn dbi delete
 
-  let get (type key value) map ?txn k =
-    let module Key = (val map.key :Conv.S with type t = key) in
-    let module Value = (val map.value :Conv.S with type t = value) in
+  let get map ?txn k =
     Txn.trivial Ro
       ?txn:(txn :> [ `Read ] Txn.t option)
       (map.env :> [ `Read ] Env.t)
     @@ fun txn ->
-    Mdb.get txn map.dbi (Key.write Bigstring.create k)
-    |> Value.read
+    Mdb.get txn map.dbi (map.key.write Bigstring.create k)
+    |> map.value.read
 
   module Flags = Mdb.PutFlags
 
-  let put (type key value) map ?txn ?(flags=Flags.none) k v =
-    let module Key = (val map.key :Conv.S with type t = key) in
-    let module Value = (val map.value :Conv.S with type t = value) in
+  let put map ?txn ?(flags=Flags.none) k v =
+    let key = map.key and value = map.value in
     if Conv.Flags.(test dup_sort map.flags)
     then begin
-      let ka = Key.write Bigstring.create k in
-      let va = Value.write Bigstring.create v in
+      let ka = key.write Bigstring.create k in
+      let va = value.write Bigstring.create v in
       Txn.trivial Rw ?txn map.env @@ fun txn ->
       Mdb.put txn map.dbi ka va flags
     end
     else begin
-      let ka = Key.write Bigstring.create k in
+      let ka = key.write Bigstring.create k in
       Txn.trivial Rw ?txn map.env @@ fun txn ->
       let va_opt = ref Mdb.Block_option.none in
       let alloc len =
@@ -424,7 +434,7 @@ module Map = struct
         va_opt := Mdb.Block_option.some va;
         va
       in
-      let va = Value.write alloc v in
+      let va = value.write alloc v in
       if Mdb.Block_option.is_some !va_opt
       then begin
         if Mdb.Block_option.get_unsafe !va_opt != va then
@@ -433,35 +443,34 @@ module Map = struct
       else Mdb.put txn map.dbi ka va flags
     end
 
-  let remove (type key value) map ?txn ?value k =
-    let module Key = (val map.key :Conv.S with type t = key) in
-    let ka = Key.write Bigstring.create k in
-    let va = match value with
+  let remove map ?txn ?value:v k =
+    let key = map.key and value = map.value in
+    let ka = key.write Bigstring.create k in
+    let va = match v with
       | None -> Mdb.Block_option.none
-      | Some value ->
-        let module Value = (val map.value :Conv.S with type t = value) in
-        Mdb.Block_option.some @@ Value.write Bigstring.create value
+      | Some v ->
+        Mdb.Block_option.some @@ value.write Bigstring.create v
     in
     Txn.trivial Rw ?txn map.env @@ fun txn ->
     Mdb.del txn map.dbi ka va
 
-  let compare_key (type key) map ?txn x y =
-    let module Key = (val map.key :Conv.S with type t = key) in
-    let xa = Key.write Bigstring.create x in
-    let ya = Key.write Bigstring.create y in
+  let compare_key map ?txn x y =
+    let key = map.key in
+    let xa = key.write Bigstring.create x in
+    let ya = key.write Bigstring.create y in
     Txn.trivial Ro
       ?txn:(txn :> [ `Read ] Txn.t option)
       (map.env :> [ `Read ] Env.t)
     @@ fun txn ->
     Mdb.cmp txn map.dbi xa ya
 
-  let compare_val (type value) map ?txn =
+  let compare_val map ?txn =
     if not Conv.Flags.(test dup_sort map.flags) then
       invalid_arg "Lmdb: elements are only comparable in a dup_sort map";
-    let module Value = (val map.value :Conv.S with type t = value) in
+    let value = map.value in
     fun x y ->
-    let xa = Value.write Bigstring.create x in
-    let ya = Value.write Bigstring.create y in
+    let xa = value.write Bigstring.create x in
+    let ya = value.write Bigstring.create y in
     Txn.trivial Ro
       ?txn:(txn :> [ `Read ] Txn.t option)
       (map.env :> [ `Read ] Env.t)
@@ -520,10 +529,9 @@ module Cursor = struct
       | None -> assert false
       | Some x -> x
 
-  let seek (type key value) { cursor ; map } k =
-    let module Key = (val map.key :Map.Conv.S with type t = key) in
-    let module Value = (val map.value :Map.Conv.S with type t = value) in
-    let ka = Key.write Bigstring.create k in
+  let seek { cursor ; map } k =
+    let key = map.key and value = map.value in
+    let ka = key.write Bigstring.create k in
     let ka', va =
       Mdb.cursor_get cursor
         (Mdb.Block_option.some ka)
@@ -531,30 +539,28 @@ module Cursor = struct
         Ops.set
     in
     assert (ka' = ka);
-    k, Value.read va
+    k, value.read va
 
   let get cursor k = snd @@ seek cursor k
 
-  let seek_range (type key value) { cursor ; map } k =
-    let module Key = (val map.key :Map.Conv.S with type t = key) in
-    let module Value = (val map.value :Map.Conv.S with type t = value) in
+  let seek_range { cursor ; map } k =
+    let key = map.key and value = map.value in
     let ka, va =
       Mdb.cursor_get cursor
-        (Mdb.Block_option.some (Key.write Bigstring.create k))
+        (Mdb.Block_option.some (key.write Bigstring.create k))
         Mdb.Block_option.none
         Ops.set_range
     in
-    Key.read ka, Value.read va
+    key.read ka, value.read va
 
-  let get_prim (type key value) op { cursor ; map } =
-    let module Key = (val map.key :Map.Conv.S with type t = key) in
-    let module Value = (val map.value :Map.Conv.S with type t = value) in
+  let get_prim op { cursor ; map } =
+    let key = map.key and value = map.value in
     let ka, va =
       Mdb.cursor_get cursor
         Mdb.Block_option.none Mdb.Block_option.none
         op
     in
-    Key.read ka, Value.read va
+    key.read ka, value.read va
 
   let current    c = get_prim Ops.get_current c
   let first      c = get_prim Ops.first c
@@ -566,11 +572,10 @@ module Cursor = struct
 
   let count { cursor; _ } = Mdb.cursor_count cursor
 
-  let seek_dup (type key value) { cursor ; map } k v =
-    let module Key = (val map.key :Map.Conv.S with type t = key) in
-    let module Value = (val map.value :Map.Conv.S with type t = value) in
-    let ka = Key.write Bigstring.create k in
-    let va = Value.write Bigstring.create v in
+  let seek_dup { cursor ; map } k v =
+    let key = map.key and value = map.value in
+    let ka = key.write Bigstring.create k in
+    let va = value.write Bigstring.create v in
     let ka', va' =
       Mdb.cursor_get
         cursor
@@ -581,25 +586,24 @@ module Cursor = struct
     assert (ka' = ka);
     assert (va' = va)
 
-  let seek_range_dup (type key value) { cursor ; map } k v =
-    let module Key = (val map.key :Map.Conv.S with type t = key) in
-    let module Value = (val map.value :Map.Conv.S with type t = value) in
+  let seek_range_dup { cursor ; map } k v =
+    let key = map.key and value = map.value in
     let ka, va =
       Mdb.cursor_get cursor
-        (Mdb.Block_option.some (Key.write Bigstring.create k))
-        (Mdb.Block_option.some (Value.write Bigstring.create v))
+        (Mdb.Block_option.some (key.write Bigstring.create k))
+        (Mdb.Block_option.some (value.write Bigstring.create v))
         Ops.get_both_range
     in
-    Key.read ka, Value.read va
+    key.read ka, value.read va
 
-  let get_dup_prim (type value) op { cursor ; map } =
-    let module Value = (val map.value :Map.Conv.S with type t = value) in
+  let get_dup_prim op { cursor ; map } =
+    let value = map.value in
     let _, va =
       Mdb.cursor_get cursor
         Mdb.Block_option.none Mdb.Block_option.none
         op
     in
-    Value.read va
+    value.read va
 
   let first_dup c = get_dup_prim Ops.first_dup c
   let last_dup  c = get_dup_prim Ops.last_dup c
@@ -609,8 +613,8 @@ module Cursor = struct
   let cursor_none cursor = Mdb.cursor_get cursor.cursor
       Mdb.Block_option.none Mdb.Block_option.none
 
-  let get_values_multiple (type value) cursor len =
-    let module Value = (val cursor.map.value :Map.Conv.S with type t = value) in
+  let get_values_multiple cursor len =
+    let value = cursor.map.value in
     assert Map.Conv.Flags.(test dup_fixed cursor.map.flags);
     let _, first = cursor_none cursor Ops.first_dup in
     let size = Bigstring.length first in
@@ -619,7 +623,7 @@ module Cursor = struct
     let rec convert buf off i =
       if off+size <= Bigstring.length buf
       then begin
-        values.(i) <- Value.read @@ Bigstring.sub buf ~off ~len:size;
+        values.(i) <- value.read @@ Bigstring.sub buf ~off ~len:size;
         convert buf (off+size) (i+1)
       end
       else begin
@@ -698,11 +702,11 @@ module Cursor = struct
     first_dup c |> ignore;
     all_prim_from_first c current
 
-  let put_raw_key (type value) { cursor ; map } ~flags ka v =
-    let module Value = (val map.value :Map.Conv.S with type t = value) in
+  let put_raw_key { cursor ; map } ~flags ka v =
+    let value = map.value in
     if Map.Conv.Flags.(test dup_sort map.flags)
     then begin
-      let va = Value.write Bigstring.create v in
+      let va = value.write Bigstring.create v in
       Mdb.cursor_put cursor ka va flags
     end
     else begin
@@ -715,7 +719,7 @@ module Cursor = struct
           Mdb.cursor_put_reserve cursor ka len flags;
         Mdb.Block_option.get_unsafe !va_opt
       in
-      let va = Value.write alloc v in
+      let va = value.write alloc v in
       if Mdb.Block_option.is_some !va_opt
       then begin
         if Mdb.Block_option.get_unsafe !va_opt != va then
@@ -724,9 +728,9 @@ module Cursor = struct
       else Mdb.cursor_put cursor ka va flags
     end
 
-  let put (type key) cursor ?(flags=Flags.none) k v =
-    let module Key = (val cursor.map.key :Map.Conv.S with type t = key) in
-    let ka = Key.write Bigstring.create k in
+  let put cursor ?(flags=Flags.none) k v =
+    let key = cursor.map.key in
+    let ka = key.write Bigstring.create k in
     put_raw_key cursor ~flags ka v
 
   let replace cursor v =
