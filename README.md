@@ -17,4 +17,4 @@ Db.put db "Bactrian camel" "Elegant and beautiful animal with two humps."
 ```
 
 [lmdb]: http://symas.com/mdb/#overview
-[doc]: https://drup.github.io/ocaml-lmdb/dev/Lmdb.html
+[doc]: https://drup.github.io/ocaml-lmdb/dev/lmdb/Lmdb/index.html
