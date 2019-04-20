@@ -51,7 +51,7 @@ type 'a perm =
 
 (** Collection of maps stored in a single memory-mapped file. *)
 module Env : sig
-  type -'perm t constraint 'perm = [< `Read | `Write ]
+  type t
 
   module Flags = Mdb.EnvFlags
 
@@ -69,37 +69,36 @@ module Env : sig
   *)
   val create :
     ?max_readers:int -> ?map_size:int -> ?max_maps:int ->
-    ?flags:Flags.t -> ?mode:int -> 'perm perm -> string -> 'perm t
+    ?flags:Flags.t -> ?mode:int -> _ perm -> string -> t
 
 
+  val sync : ?force:bool -> t -> unit
 
-  val sync : ?force:bool -> [> `Write ] t -> unit
+  val close: t -> unit
 
-  val close: _ t -> unit
+  val copy : ?compact:bool -> t -> string -> unit
 
-  val copy : ?compact:bool -> [> `Read ] t -> string -> unit
+  val copyfd : ?compact:bool -> t -> Unix.file_descr -> unit
 
-  val copyfd : ?compact:bool -> [> `Read ] t -> Unix.file_descr -> unit
+  val set_flags : t -> Flags.t -> bool -> unit
 
-  val set_flags : 'perm t -> Flags.t -> bool -> unit
+  val flags : t -> Flags.t
 
-  val flags : 'perm t -> Flags.t
+  val set_map_size : t -> int -> unit
 
-  val set_map_size : [> `Write ] t -> int -> unit
+  val path : t -> string
 
-  val path : 'perm t -> string
+  val fd : t -> Unix.file_descr
 
-  val fd : 'perm t -> Unix.file_descr
+  val stats : t -> Mdb.stats
 
-  val stats : [> `Read ] t -> Mdb.stats
+  val max_readers : t -> int
 
-  val max_readers : 'perm t -> int
+  val max_keysize : t -> int
 
-  val max_keysize : 'perm t -> int
+  val reader_list : t -> string list
 
-  val reader_list : 'perm t -> string list
-
-  val reader_check : 'perm t -> int
+  val reader_check : t -> int
 
 end
 
@@ -133,7 +132,7 @@ end
   val go :
     ?perm:'perm perm ->
     ?txn:'perm t ->
-    'perm Env.t ->
+    Env.t ->
     ('perm t -> 'a) -> 'a option
 
 
@@ -142,7 +141,7 @@ end
   *)
   val abort : 'perm t -> 'b
 
-  val env : 'perm t -> 'perm Env.t
+  val env : 'perm t -> Env.t
   (** [env txn] return the environment of [txn] *)
 
 end
@@ -253,8 +252,7 @@ module Map : sig
   end
 
   (** A handle for a map from keys of type ['key] to values of type ['value]. *)
-  type ('key, 'value, -'perm, -'dup) t
-    constraint 'perm = [< `Read | `Write ]
+  type ('key, 'value, -'dup) t
     constraint 'dup = [< `Dup | `Uni ]
 
   type 'a card =
@@ -284,7 +282,7 @@ module Map : sig
     value       :'value Conv.t ->
     ?txn        :[> `Read | `Write ] Txn.t ->
     ?name       :string ->
-    ([> `Read | `Write ] as 'perm) Env.t -> ('key, 'value, 'perm, 'dup) t
+    Env.t -> ('key, 'value, 'dup) t
 
   (** [open_existing env] is like [create], but only opens already existing maps.
       @raise Not_found if the map doesn't exist.
@@ -295,16 +293,16 @@ module Map : sig
     value       :'value Conv.t ->
     ?txn        :[> `Read ] Txn.t ->
     ?name       :string ->
-    ([> `Read ] as 'perm) Env.t ->
-    ('key, 'value, 'perm, 'dup) t
+    Env.t ->
+    ('key, 'value, 'dup) t
 
   (** [env map] returns the environment of [map]. *)
-  val env : (_, _, 'p, _) t -> 'p Env.t
+  val env : _ t -> Env.t
 
   (** [get map key] returns the first value associated to [key].
       @raise Not_found if the key is not in the map.
   *)
-  val get : ('key, 'value, [> `Read ], _) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'value
+  val get : ('key, 'value, _) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'value
 
   module Flags = Lmdb_bindings.PutFlags
 
@@ -318,8 +316,8 @@ module Map : sig
       {! Flags.no_overwrite} or {! Flags.no_dup_data} was passed in
       [flags].
   *)
-  val put : ('key, 'value, ([> `Read | `Write ] as 'perm), _) t ->
-    ?txn:'perm Txn.t -> ?flags:Flags.t -> 'key -> 'value -> unit
+  val put : ('key, 'value, _) t ->
+    ?txn:[> `Write ] Txn.t -> ?flags:Flags.t -> 'key -> 'value -> unit
 
   (** [remove map key] removes [key] from [map].
 
@@ -328,30 +326,30 @@ module Map : sig
 
       @raise Not_found if the key is not in the map.
   *)
-  val remove : ('key, 'value, ([> `Read | `Write ] as 'perm), _) t ->
-    ?txn:'perm Txn.t -> ?value:'value -> 'key -> unit
+  val remove : ('key, 'value, _) t ->
+    ?txn:[> `Write ] Txn.t -> ?value:'value -> 'key -> unit
 
 
   (** {2 Misc} *)
 
-  val stats : ?txn: [> `Read ] Txn.t -> ('key, 'value, [> `Read ], _) t -> Mdb.stats
+  val stats : ?txn: [> `Read ] Txn.t -> ('key, 'value, _) t -> Mdb.stats
 
   (** [drop ?delete map] Empties [map].
       @param delete If [true] [map] is also deleted from the environment
       and the handle [map] invalidated. *)
-  val drop : ?txn: ([> `Read | `Write ] as 'perm) Txn.t -> ?delete:bool ->
-    ('key, 'value, 'perm, _) t -> unit
+  val drop : ?txn: [> `Write ] Txn.t -> ?delete:bool ->
+    ('key, 'value, _) t -> unit
 
   (** [compare_key map ?txn a b]
      Compares [a] and [b] as if they were keys in [map]. *)
-  val compare_key : ('key, 'value, [> `Read ], _) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'key -> int
+  val compare_key : ('key, 'value, _) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'key -> int
 
   (** [compare map ?txn a b] Same as [compare_key]. *)
-  val compare : ('key, 'value, [> `Read ], _) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'key -> int
+  val compare : ('key, 'value, _) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'key -> int
 
   (** [compare_val map ?txn a b]
      Compares [a] and [b] as if they were values in a [dup_sort] [map]. *)
-  val compare_val : ('key, 'value, [> `Read ], [> `Dup ]) t -> ?txn:[> `Read ] Txn.t -> 'value -> 'value -> int
+  val compare_val : ('key, 'value, [> `Dup ]) t -> ?txn:[> `Read ] Txn.t -> 'value -> 'value -> int
 end
 
 (** Iterators over maps. *)
@@ -391,7 +389,7 @@ end
       created before calling [f] and be committed after [f] returns.
       Such a transient transaction may be aborted using {! abort}.
   *)
-  val go : 'perm perm -> ?txn:'perm Txn.t -> ('key, 'value, 'perm, 'dup) Map.t ->
+  val go : 'perm perm -> ?txn:'perm Txn.t -> ('key, 'value, 'dup) Map.t ->
     (('key, 'value, 'perm, 'dup) t -> 'a) -> 'a option
 
   (** [abort cursor] aborts [cursor] and the current [go] function,
@@ -407,41 +405,41 @@ end
       Will call [f] multiple times with the same key for duplicates *)
 
   val iter :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    ?cursor:('key, 'value, [> `Read ], 'dup) t ->
     f:('key -> 'value -> unit) ->
-    ('key, 'value, 'perm, 'dup) Map.t ->
+    ('key, 'value, 'dup) Map.t ->
     unit
 
   val fold_left :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    ?cursor:('key, 'value, [> `Read ], 'dup) t ->
     f:('a -> 'key -> 'value -> 'a) -> 'a ->
-    ('key, 'value, 'perm, 'dup) Map.t ->
+    ('key, 'value, 'dup) Map.t ->
     'a
 
   val fold_right :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    ?cursor:('key, 'value, [> `Read ], 'dup) t ->
     f:('key -> 'value -> 'a -> 'a) ->
-    ('key, 'value, 'perm, 'dup) Map.t ->
+    ('key, 'value, 'dup) Map.t ->
     'a -> 'a
 
   (** Call [f] once for each key passing the key and {e all} associated values. *)
 
   val iter_all :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    ?cursor:('key, 'value, [> `Read ], 'dup) t ->
     f:('key -> 'value array -> unit) ->
-    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
+    ('key, 'value, [> `Dup ] as  'dup) Map.t ->
     unit
 
   val fold_left_all :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    ?cursor:('key, 'value, [> `Read ], 'dup) t ->
     f:('a -> 'key -> 'value array -> 'a) -> 'a ->
-    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
+    ('key, 'value, [> `Dup ] as  'dup) Map.t ->
     'a
 
   val fold_right_all :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    ?cursor:('key, 'value, [> `Read ], 'dup) t ->
     f:('key -> 'value array -> 'a -> 'a) ->
-    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
+    ('key, 'value, [> `Dup ] as  'dup) Map.t ->
     'a -> 'a
 
 
