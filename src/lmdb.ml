@@ -152,17 +152,17 @@ module Map = struct
 
     type 'a t = {
       flags : Flags.t ;
-      read : Bigstring.t -> 'a ;
-      write : (int -> Bigstring.t) -> 'a -> Bigstring.t ;
+      serialise : (int -> Bigstring.t) -> 'a -> Bigstring.t ;
+      deserialise : Bigstring.t -> 'a ;
     }
 
     let make ?(flags=Flags.none) ~serialise ~deserialise =
       { flags = flags
-      ; read = deserialise
-      ; write = serialise }
+      ; deserialise = deserialise
+      ; serialise = serialise }
 
-    let serialise { write; _ } = write
-    let deserialise { read; _ } = read
+    let serialise { serialise; _ } = serialise
+    let deserialise { deserialise; _ } = deserialise
     let flags { flags; _ } = flags
 
     let is_int_size n = n = Mdb.sizeof_int || n = Mdb.sizeof_size_t
@@ -172,12 +172,12 @@ module Map = struct
           if Sys.big_endian && is_int_size 4
           then Flags.(integer_key + integer_dup + dup_fixed)
           else Flags.(dup_fixed)
-      ; write = begin fun alloc x ->
+      ; serialise = begin fun alloc x ->
           let a = alloc 4 in
           Bigstring.set_int32_be a 0 x;
           a
         end
-      ; read = begin fun a ->
+      ; deserialise = begin fun a ->
           Bigstring.get_int32_be a 0
         end
       }
@@ -187,34 +187,34 @@ module Map = struct
           if not Sys.big_endian && is_int_size 4
           then Flags.(integer_key + integer_dup + dup_fixed)
           else Flags.(reverse_key + reverse_dup + dup_fixed)
-      ; write = begin fun alloc x ->
+      ; serialise = begin fun alloc x ->
           let a = alloc 4 in
           Bigstring.set_int32_le a 0 x;
           a
         end
-      ; read = begin fun a ->
+      ; deserialise = begin fun a ->
           Bigstring.get_int32_le a 0
         end
       }
 
-    let int32_as_int { flags; read; write } =
+    let int32_as_int { flags; deserialise; serialise } =
       { flags
-      ; write = begin
+      ; serialise = begin
           if Sys.int_size <= 32
           then fun alloc i ->
-            write alloc @@ Int32.of_int i
+            serialise alloc @@ Int32.of_int i
           else fun alloc i ->
             let ix = Int32.of_int i in
             if Int32.to_int ix = i
-            then write alloc ix
+            then serialise alloc ix
             else invalid_arg "Lmdb: Integer truncated"
         end
-      ; read = begin
+      ; deserialise = begin
           if Sys.int_size >= 32
           then fun a ->
-            read a |> Int32.to_int
+            deserialise a |> Int32.to_int
           else fun a ->
-            let ix = read a in
+            let ix = deserialise a in
             let i = Int32.to_int ix in
             if Int32.of_int i = ix
             then i
@@ -230,12 +230,12 @@ module Map = struct
           if Sys.big_endian && is_int_size 8
           then Flags.(integer_key + integer_dup + dup_fixed)
           else Flags.(dup_fixed)
-      ; write = begin fun alloc x ->
+      ; serialise = begin fun alloc x ->
           let a = alloc 8 in
           Bigstring.set_int64_be a 0 x;
           a
         end
-      ; read = begin fun a ->
+      ; deserialise = begin fun a ->
           Bigstring.get_int64_be a 0
         end
       }
@@ -245,27 +245,27 @@ module Map = struct
           if not Sys.big_endian && is_int_size 8
           then Flags.(integer_key + integer_dup + dup_fixed)
           else Flags.(reverse_key + reverse_dup + dup_fixed)
-      ; write = begin fun alloc x ->
+      ; serialise = begin fun alloc x ->
           let a = alloc 8 in
           Bigstring.set_int64_le a 0 x;
           a
         end
-      ; read = begin fun a ->
+      ; deserialise = begin fun a ->
           Bigstring.get_int64_le a 0
         end
       }
 
-    let int64_as_int { flags; read; write } =
+    let int64_as_int { flags; deserialise; serialise } =
       { flags
-      ; write = begin fun alloc i ->
-          write alloc @@ Int64.of_int i
+      ; serialise = begin fun alloc i ->
+          serialise alloc @@ Int64.of_int i
         end
-      ; read = begin
+      ; deserialise = begin
           if Sys.int_size >= 64
           then fun a ->
-            read a |> Int64.to_int
+            deserialise a |> Int64.to_int
           else fun a ->
-            let ix = read a in
+            let ix = deserialise a in
             let i = Int64.to_int ix in
             if Int64.of_int i = ix
             then i
@@ -278,21 +278,21 @@ module Map = struct
 
     let string =
       { flags = Flags.none
-      ; write = begin fun alloc s ->
+      ; serialise = begin fun alloc s ->
           let len = String.length s in
           let a = alloc len in
           Bigstring.blit_from_string s ~src_off:0 a ~dst_off:0 ~len;
           a
         end
-      ; read = begin fun a ->
+      ; deserialise = begin fun a ->
           Bigstring.substring a ~off:0 ~len:(Bigstring.length a)
         end
       }
 
     let bigstring =
       { flags = Flags.none
-      ; write = (fun _ b -> b)
-      ; read = (fun b -> b)
+      ; serialise = (fun _ b -> b)
+      ; deserialise = (fun b -> b)
       }
   end
 
@@ -399,8 +399,8 @@ module Map = struct
       ?txn:(txn :> [ `Read ] Txn.t option)
       (map.env :> [ `Read ] Env.t)
     @@ fun txn ->
-    Mdb.get txn map.dbi (map.key.write Bigstring.create k)
-    |> map.value.read
+    Mdb.get txn map.dbi (map.key.serialise Bigstring.create k)
+    |> map.value.deserialise
 
   module Flags = Mdb.PutFlags
 
@@ -408,13 +408,13 @@ module Map = struct
     let key = map.key and value = map.value in
     if Conv.Flags.(test dup_sort map.flags)
     then begin
-      let ka = key.write Bigstring.create k in
-      let va = value.write Bigstring.create v in
+      let ka = key.serialise Bigstring.create k in
+      let va = value.serialise Bigstring.create v in
       Txn.trivial Rw ?txn map.env @@ fun txn ->
       Mdb.put txn map.dbi ka va flags
     end
     else begin
-      let ka = key.write Bigstring.create k in
+      let ka = key.serialise Bigstring.create k in
       Txn.trivial Rw ?txn map.env @@ fun txn ->
       let va_opt = ref Mdb.Block_option.none in
       let alloc len =
@@ -424,7 +424,7 @@ module Map = struct
         va_opt := Mdb.Block_option.some va;
         va
       in
-      let va = value.write alloc v in
+      let va = value.serialise alloc v in
       if Mdb.Block_option.is_some !va_opt
       then begin
         if Mdb.Block_option.get_unsafe !va_opt != va then
@@ -435,19 +435,19 @@ module Map = struct
 
   let remove map ?txn ?value:v k =
     let key = map.key and value = map.value in
-    let ka = key.write Bigstring.create k in
+    let ka = key.serialise Bigstring.create k in
     let va = match v with
       | None -> Mdb.Block_option.none
       | Some v ->
-        Mdb.Block_option.some @@ value.write Bigstring.create v
+        Mdb.Block_option.some @@ value.serialise Bigstring.create v
     in
     Txn.trivial Rw ?txn map.env @@ fun txn ->
     Mdb.del txn map.dbi ka va
 
   let compare_key map ?txn x y =
     let key = map.key in
-    let xa = key.write Bigstring.create x in
-    let ya = key.write Bigstring.create y in
+    let xa = key.serialise Bigstring.create x in
+    let ya = key.serialise Bigstring.create y in
     Txn.trivial Ro
       ?txn:(txn :> [ `Read ] Txn.t option)
       (map.env :> [ `Read ] Env.t)
@@ -459,8 +459,8 @@ module Map = struct
       invalid_arg "Lmdb: elements are only comparable in a dup_sort map";
     let value = map.value in
     fun x y ->
-    let xa = value.write Bigstring.create x in
-    let ya = value.write Bigstring.create y in
+    let xa = value.serialise Bigstring.create x in
+    let ya = value.serialise Bigstring.create y in
     Txn.trivial Ro
       ?txn:(txn :> [ `Read ] Txn.t option)
       (map.env :> [ `Read ] Env.t)
@@ -521,7 +521,7 @@ module Cursor = struct
 
   let seek { cursor ; map } k =
     let key = map.key and value = map.value in
-    let ka = key.write Bigstring.create k in
+    let ka = key.serialise Bigstring.create k in
     let ka', va =
       Mdb.cursor_get cursor
         (Mdb.Block_option.some ka)
@@ -529,7 +529,7 @@ module Cursor = struct
         Ops.set
     in
     assert (ka' = ka);
-    k, value.read va
+    k, value.deserialise va
 
   let get cursor k = snd @@ seek cursor k
 
@@ -537,11 +537,11 @@ module Cursor = struct
     let key = map.key and value = map.value in
     let ka, va =
       Mdb.cursor_get cursor
-        (Mdb.Block_option.some (key.write Bigstring.create k))
+        (Mdb.Block_option.some (key.serialise Bigstring.create k))
         Mdb.Block_option.none
         Ops.set_range
     in
-    key.read ka, value.read va
+    key.deserialise ka, value.deserialise va
 
   let get_prim op { cursor ; map } =
     let key = map.key and value = map.value in
@@ -550,7 +550,7 @@ module Cursor = struct
         Mdb.Block_option.none Mdb.Block_option.none
         op
     in
-    key.read ka, value.read va
+    key.deserialise ka, value.deserialise va
 
   let current    c = get_prim Ops.get_current c
   let first      c = get_prim Ops.first c
@@ -564,8 +564,8 @@ module Cursor = struct
 
   let seek_dup { cursor ; map } k v =
     let key = map.key and value = map.value in
-    let ka = key.write Bigstring.create k in
-    let va = value.write Bigstring.create v in
+    let ka = key.serialise Bigstring.create k in
+    let va = value.serialise Bigstring.create v in
     let ka', va' =
       Mdb.cursor_get
         cursor
@@ -580,11 +580,11 @@ module Cursor = struct
     let key = map.key and value = map.value in
     let ka, va =
       Mdb.cursor_get cursor
-        (Mdb.Block_option.some (key.write Bigstring.create k))
-        (Mdb.Block_option.some (value.write Bigstring.create v))
+        (Mdb.Block_option.some (key.serialise Bigstring.create k))
+        (Mdb.Block_option.some (value.serialise Bigstring.create v))
         Ops.get_both_range
     in
-    key.read ka, value.read va
+    key.deserialise ka, value.deserialise va
 
   let get_dup_prim op { cursor ; map } =
     let value = map.value in
@@ -593,7 +593,7 @@ module Cursor = struct
         Mdb.Block_option.none Mdb.Block_option.none
         op
     in
-    value.read va
+    value.deserialise va
 
   let first_dup c = get_dup_prim Ops.first_dup c
   let last_dup  c = get_dup_prim Ops.last_dup c
@@ -613,7 +613,7 @@ module Cursor = struct
     let rec convert buf off i =
       if off+size <= Bigstring.length buf
       then begin
-        values.(i) <- value.read @@ Bigstring.sub buf ~off ~len:size;
+        values.(i) <- value.deserialise @@ Bigstring.sub buf ~off ~len:size;
         convert buf (off+size) (i+1)
       end
       else begin
@@ -696,7 +696,7 @@ module Cursor = struct
     let value = map.value in
     if Map.Conv.Flags.(test dup_sort map.flags)
     then begin
-      let va = value.write Bigstring.create v in
+      let va = value.serialise Bigstring.create v in
       Mdb.cursor_put cursor ka va flags
     end
     else begin
@@ -709,7 +709,7 @@ module Cursor = struct
           Mdb.cursor_put_reserve cursor ka len flags;
         Mdb.Block_option.get_unsafe !va_opt
       in
-      let va = value.write alloc v in
+      let va = value.serialise alloc v in
       if Mdb.Block_option.is_some !va_opt
       then begin
         if Mdb.Block_option.get_unsafe !va_opt != va then
@@ -720,7 +720,7 @@ module Cursor = struct
 
   let put cursor ?(flags=Flags.none) k v =
     let key = cursor.map.key in
-    let ka = key.write Bigstring.create k in
+    let ka = key.serialise Bigstring.create k in
     put_raw_key cursor ~flags ka v
 
   let replace cursor v =
