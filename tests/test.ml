@@ -34,8 +34,8 @@ let[@warning "-26-27"] capabilities () =
            ~value:Conv.int32_be_as_int
            ~name:"Capabilities") env
   in
-  let env_rw = (env :> [ `Read | `Write ] Env.t) in
-  let env_ro = (env :> [ `Read ] Env.t) in
+  let env_rw = env in
+  let env_ro = env in
   (* let env_rw = (env_ro :> [ `Read | `Write ] Env.t) in <- FAILS *)
   (* ignore @@ (rw :> [ `Read ] Cap.t); <- FAILS *)
   (* ignore @@ (ro :> [ `Read | `Write ] cap); <- FAILS *)
@@ -45,9 +45,8 @@ let[@warning "-26-27"] capabilities () =
   (* Map.put ~txn:txn_ro map 4 4; <- FAILS *)
   assert (Map.get ~txn:txn_rw map 4 = 4);
   assert (Map.get ~txn:txn_ro map 4 = 4);
-  Cursor.go Ro
-    ~txn:(txn_rw :> [ `Read ] Txn.t)
-    (map :> (_,_,[ `Read ], _) Map.t) @@ fun cursor ->
+  Cursor.go Ro map
+    ~txn:(txn_rw :> [ `Read ] Txn.t) @@ fun cursor ->
   assert (Cursor.get cursor 4 = 4);
   (* Cursor.first_dup cursor; <- FAILS *)
 ;;
@@ -176,10 +175,10 @@ let test_dup =
                ~value:Conv.int32_be_as_int
                ~name:"Cursor.wrongmap") env
       in
-      let map2_ro = (map2 :> (_,_,[ `Read ],_) Map.t) in
+      let map2_ro = map2 in
       check_raises "wrong cursor" (Invalid_argument "Lmdb.Cursor.fold: Got cursor for wrong map") begin fun () ->
         ignore @@ Cursor.go Ro map2_ro
-          (fun cursor -> Cursor.fold_left_all ~cursor () (map :> (_,_,[ `Read ],_) Map.t) ~f:(fun _ _ _ -> ()));
+          (fun cursor -> Cursor.fold_left_all ~cursor () map ~f:(fun _ _ _ -> ()));
       end;
       Env.close env2;
     end
