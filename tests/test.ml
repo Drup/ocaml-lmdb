@@ -159,7 +159,7 @@ let test_dup =
           filename
       in
       check_raises "wrong txn" (Invalid_argument "Lmdb: transaction from wrong environment.") begin fun () ->
-        ignore @@ Txn.go Ro (env2 :> [ `Read ] Env.t)
+        ignore @@ Txn.go Ro env2
           (fun txn -> Map.get ~txn map 0 |> ignore);
       end;
       let map2 =

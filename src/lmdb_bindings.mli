@@ -49,7 +49,7 @@ end
 
 (** {2 Environment} *)
 
-type -'a env constraint 'a = [< `Read | `Write ]
+type env
 module EnvFlags :
   sig
     include Flags
@@ -75,39 +75,39 @@ module CopyFlags :
     include Flags
     val compact : t
   end
-external env_create : unit -> [< `Read | `Write ] env = "mdbs_env_create"
+external env_create : unit -> env = "mdbs_env_create"
 external env_open :
-  [< `Read | `Write ] env -> string -> EnvFlags.t -> int -> unit
+  env -> string -> EnvFlags.t -> int -> unit
   = "mdbs_env_open"
-external env_close : [< `Read | `Write ] env -> unit = "mdbs_env_close"
-external env_set_mapsize : [< `Read | `Write ] env -> int -> unit
+external env_close : env -> unit = "mdbs_env_close"
+external env_set_mapsize : env -> int -> unit
   = "mdbs_env_set_mapsize"
-external env_set_maxdbs : [< `Read | `Write ] env -> int -> unit
+external env_set_maxdbs : env -> int -> unit
   = "mdbs_env_set_maxdbs"
-external env_set_maxreaders : [< `Read | `Write ] env -> int -> unit
+external env_set_maxreaders : env -> int -> unit
   = "mdbs_env_set_maxreaders"
-external env_copy : [< `Read | `Write ] env -> string -> CopyFlags.t -> unit
+external env_copy : env -> string -> CopyFlags.t -> unit
   = "mdbs_env_copy2"
 external env_copyfd :
-  [< `Read | `Write ] env -> Unix.file_descr -> CopyFlags.t -> unit
+  env -> Unix.file_descr -> CopyFlags.t -> unit
   = "mdbs_env_copyfd2"
 external env_set_flags :
-  [< `Read | `Write ] env -> EnvFlags.t -> bool -> unit
+  env -> EnvFlags.t -> bool -> unit
   = "mdbs_env_set_flags"
-external env_get_flags : [< `Read | `Write ] env -> EnvFlags.t
+external env_get_flags : env -> EnvFlags.t
   = "mdbs_env_get_flags"
-external env_get_path : [< `Read | `Write ] env -> string
+external env_get_path : env -> string
   = "mdbs_env_get_path"
-external env_get_fd : [< `Read | `Write ] env -> Unix.file_descr
+external env_get_fd : env -> Unix.file_descr
   = "mdbs_env_get_fd"
-external env_sync : [< `Read | `Write ] env -> bool -> unit = "mdbs_env_sync"
-external env_get_maxreaders : [< `Read | `Write ] env -> int
+external env_sync : env -> bool -> unit = "mdbs_env_sync"
+external env_get_maxreaders : env -> int
   = "mdbs_env_get_maxreaders"
-external env_get_maxkeysize : [< `Read | `Write ] env -> int
+external env_get_maxkeysize : env -> int
   = "mdbs_env_get_maxkeysize"
-external reader_list : [< `Read | `Write ] env -> (string -> int) -> int
+external reader_list : env -> (string -> int) -> int
   = "mdbs_reader_list"
-external reader_check : [< `Read | `Write ] env -> int = "mdbs_reader_check"
+external reader_check : env -> int = "mdbs_reader_check"
 type stats = {
   psize : int;
   depth : int;
@@ -116,18 +116,18 @@ type stats = {
   overflow_pages : int;
   entries : int;
 }
-external env_stat : [< `Read | `Write ] env -> stats = "mdbs_env_stat"
+external env_stat : env -> stats = "mdbs_env_stat"
 
 
 (** {2 Transaction} *)
 
-type -'a txn constraint 'a = [< `Read | `Write ]
-external txn_env : ([< `Read | `Write ] as 'a) txn -> 'a env = "mdbs_txn_env"
+type txn
+external txn_env : txn -> env = "mdbs_txn_env"
 external txn_begin :
-  ([< `Read | `Write ] as 'a) env -> 'a txn option -> EnvFlags.t -> 'a txn
+  env -> txn option -> EnvFlags.t -> txn
   = "mdbs_txn_begin"
-external txn_commit : [< `Read | `Write ] txn -> unit = "mdbs_txn_commit"
-external txn_abort : [< `Read | `Write ] txn -> unit = "mdbs_txn_abort"
+external txn_commit : txn -> unit = "mdbs_txn_commit"
+external txn_abort : txn -> unit = "mdbs_txn_abort"
 
 
 (** {2 Dbi} *)
@@ -184,39 +184,39 @@ module Block_option :
     val get_exn : 'a t -> 'a
   end
 external dbi_open :
-  [< `Read | `Write ] txn -> string option -> DbiFlags.t -> dbi
+  txn -> string option -> DbiFlags.t -> dbi
   = "mdbs_dbi_open"
-external dbi_close : [< `Read | `Write ] env -> dbi -> unit
+external dbi_close : env -> dbi -> unit
   = "mdbs_dbi_close"
-external dbi_flags : [< `Read | `Write > `Read ] txn -> dbi -> DbiFlags.t
+external dbi_flags : txn -> dbi -> DbiFlags.t
   = "mdbs_dbi_flags"
-external dbi_stat : [< `Read | `Write > `Read ] txn -> dbi -> stats
+external dbi_stat : txn -> dbi -> stats
   = "mdbs_stat"
-external drop : [< `Read | `Write > `Write ] txn -> dbi -> bool -> unit
+external drop : txn -> dbi -> bool -> unit
   = "mdbs_drop"
 external get :
-  [< `Read | `Write > `Read ] txn -> dbi -> bigstring -> bigstring
+  txn -> dbi -> bigstring -> bigstring
   = "mdbs_get"
 external put :
-  [ `Read | `Write ] txn ->
+  txn ->
   dbi -> bigstring -> bigstring -> PutFlags.t -> unit = "mdbs_put"
 external put_reserve :
-  [ `Read | `Write ] txn ->
+  txn ->
   dbi -> bigstring -> int -> PutFlags.t -> bigstring = "mdbs_put"
 external del :
-  [ `Read | `Write ] txn ->
+  txn ->
   dbi -> bigstring -> bigstring Block_option.t -> unit = "mdbs_del"
 external cmp :
-  [< `Read | `Write ] txn -> dbi -> bigstring -> bigstring -> int
+  txn -> dbi -> bigstring -> bigstring -> int
   = "mdbs_cmp"
 external dcmp :
-  [< `Read | `Write ] txn -> dbi -> bigstring -> bigstring -> int
+  txn -> dbi -> bigstring -> bigstring -> int
   = "mdbs_dcmp"
 
 
 (** {2 Cursor} *)
 
-type -'a cursor constraint 'a = [< `Read | `Write ]
+type cursor
 module Ops :
   sig
     type t
@@ -240,24 +240,24 @@ module Ops :
     val set_key : t
     val set_range : t
   end
-external cursor_open : ([< `Read | `Write ] as 'a) txn -> dbi -> 'a cursor
+external cursor_open : txn -> dbi -> cursor
   = "mdbs_cursor_open"
-external cursor_close : [< `Read | `Write ] cursor -> unit
+external cursor_close : cursor -> unit
   = "mdbs_cursor_close"
 external cursor_put :
-  [ `Read | `Write ] cursor ->
+  cursor ->
   bigstring -> bigstring -> PutFlags.t -> unit = "mdbs_cursor_put"
 external cursor_put_reserve :
-  [ `Read | `Write ] cursor ->
+  cursor ->
   bigstring -> int -> PutFlags.t -> bigstring = "mdbs_cursor_put"
-external cursor_del : [ `Read | `Write ] cursor -> PutFlags.t -> unit
+external cursor_del : cursor -> PutFlags.t -> unit
   = "mdbs_cursor_del"
 external cursor_get :
-  [< `Read | `Write > `Read ] cursor ->
+  cursor ->
   bigstring Block_option.t ->
   bigstring Block_option.t -> Ops.t -> bigstring * bigstring
   = "mdbs_cursor_get"
-external cursor_count : [< `Read | `Write > `Read ] cursor -> int
+external cursor_count : cursor -> int
   = "mdbs_cursor_count"
 
 

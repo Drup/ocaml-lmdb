@@ -105,7 +105,7 @@ type stats =
 type bigstring = Bigstringaf.t
 
 (* env *)
-type -'perm env constraint 'perm = [< `Read | `Write ]
+type env
 module EnvFlags = struct
   include Flags
   let fixed_map       = fixedmap
@@ -124,52 +124,52 @@ module CopyFlags = struct
   include Flags
   let compact         = cp_compact
 end
-external env_create : unit -> _ env
+external env_create : unit -> env
   = "mdbs_env_create"
-external env_open : _ env -> string -> EnvFlags.t -> int -> unit
+external env_open : env -> string -> EnvFlags.t -> int -> unit
   = "mdbs_env_open"
-external env_close : _ env -> unit
+external env_close : env -> unit
   = "mdbs_env_close"
-external env_set_mapsize : _ env -> int -> unit
+external env_set_mapsize : env -> int -> unit
   = "mdbs_env_set_mapsize"
-external env_set_maxdbs : _ env -> int -> unit
+external env_set_maxdbs : env -> int -> unit
   = "mdbs_env_set_maxdbs"
-external env_set_maxreaders : _ env -> int -> unit
+external env_set_maxreaders : env -> int -> unit
   = "mdbs_env_set_maxreaders"
-external env_copy : _ env -> string -> CopyFlags.t -> unit
+external env_copy : env -> string -> CopyFlags.t -> unit
   = "mdbs_env_copy2"
-external env_copyfd : _ env -> Unix.file_descr -> CopyFlags.t -> unit
+external env_copyfd : env -> Unix.file_descr -> CopyFlags.t -> unit
   = "mdbs_env_copyfd2"
-external env_set_flags : _ env -> EnvFlags.t -> bool -> unit
+external env_set_flags : env -> EnvFlags.t -> bool -> unit
   = "mdbs_env_set_flags"
-external env_get_flags : _ env -> int
+external env_get_flags : env -> int
   = "mdbs_env_get_flags"
-external env_get_path : _ env -> string
+external env_get_path : env -> string
   = "mdbs_env_get_path"
-external env_get_fd : _ env -> Unix.file_descr
+external env_get_fd : env -> Unix.file_descr
   = "mdbs_env_get_fd"
-external env_sync : _ env -> bool -> unit
+external env_sync : env -> bool -> unit
   = "mdbs_env_sync"
-external env_get_maxreaders : _ env -> int
+external env_get_maxreaders : env -> int
   = "mdbs_env_get_maxreaders"
-external env_get_maxkeysize : _ env -> int
+external env_get_maxkeysize : env -> int
   = "mdbs_env_get_maxkeysize"
-external reader_list : _ env -> (string -> int) -> int
+external reader_list : env -> (string -> int) -> int
   = "mdbs_reader_list"
-external reader_check : _ env -> int
+external reader_check : env -> int
   = "mdbs_reader_check"
-external env_stat : _ env -> stats
+external env_stat : env -> stats
   = "mdbs_env_stat"
 
 (* txn *)
-type -'perm txn constraint 'perm = [< `Read | `Write ]
-external txn_env : 'perm txn -> 'perm env
+type txn
+external txn_env : txn -> env
   = "mdbs_txn_env"
-external txn_begin : 'perm env -> 'perm txn option -> EnvFlags.t -> 'perm txn
+external txn_begin : env -> txn option -> EnvFlags.t -> txn
   = "mdbs_txn_begin"
-external txn_commit : _ txn -> unit
+external txn_commit : txn -> unit
   = "mdbs_txn_commit"
-external txn_abort : _ txn -> unit
+external txn_abort : txn -> unit
   = "mdbs_txn_abort"
 
 (* dbi *)
@@ -209,40 +209,40 @@ module Block_option = struct
     else raise Not_found
 end
 external dbi_open
-  : 'perm txn -> string option -> Flags.t -> dbi
+  : txn -> string option -> Flags.t -> dbi
   = "mdbs_dbi_open"
-external dbi_close : _ env -> dbi -> unit
+external dbi_close : env -> dbi -> unit
   = "mdbs_dbi_close"
-external dbi_flags : [> `Read ] txn -> dbi -> Flags.t
+external dbi_flags : txn -> dbi -> Flags.t
   = "mdbs_dbi_flags"
-external dbi_stat : [> `Read ] txn -> dbi -> stats
+external dbi_stat : txn -> dbi -> stats
   = "mdbs_stat"
-external drop : [> `Write ] txn -> dbi -> bool -> unit
+external drop : txn -> dbi -> bool -> unit
   = "mdbs_drop"
 external get
-  : [> `Read ] txn -> dbi -> bigstring -> bigstring
+  : txn -> dbi -> bigstring -> bigstring
   = "mdbs_get"
 external put
-  : [> `Read | `Write ] txn -> dbi -> bigstring -> bigstring ->
+  : txn -> dbi -> bigstring -> bigstring ->
     PutFlags.t -> unit
   = "mdbs_put"
 external put_reserve
-  : [> `Read | `Write ] txn -> dbi -> bigstring -> int ->
+  : txn -> dbi -> bigstring -> int ->
     PutFlags.t -> bigstring
   = "mdbs_put"
 external del
-  : [> `Read | `Write ] txn -> dbi ->
+  : txn -> dbi ->
     bigstring -> bigstring Block_option.t -> unit
   = "mdbs_del"
 external cmp
-  : _ txn -> dbi -> bigstring -> bigstring -> int
+  : txn -> dbi -> bigstring -> bigstring -> int
   = "mdbs_cmp"
 external dcmp
-  : _ txn -> dbi -> bigstring -> bigstring -> int
+  : txn -> dbi -> bigstring -> bigstring -> int
   = "mdbs_dcmp"
 
 (* cursor *)
-type -'perm cursor constraint 'perm = [< `Read | `Write ]
+type cursor
 module Ops = struct
   type t = int
   let first           = first
@@ -261,29 +261,29 @@ module Ops = struct
   let prev_dup        = prev_dup
   let prev_nodup      = prev_nodup
   let set             = set
-  let set_key        = set_key
+  let set_key         = set_key
   let set_range       = set_range
   (* let prev_multiple  = prev_multiple - only since lmdb 0.9.19 *)
 end
-external cursor_open : 'perm txn -> dbi -> 'perm cursor
+external cursor_open : txn -> dbi -> cursor
   = "mdbs_cursor_open"
-external cursor_close : 'perm cursor -> unit
+external cursor_close : cursor -> unit
   = "mdbs_cursor_close"
 external cursor_put
-  : [> `Read | `Write ] cursor -> bigstring -> bigstring ->
+  : cursor -> bigstring -> bigstring ->
     PutFlags.t -> unit
   = "mdbs_cursor_put"
 external cursor_put_reserve
-  : [> `Read | `Write ] cursor -> bigstring -> int ->
+  : cursor -> bigstring -> int ->
     PutFlags.t -> bigstring
   = "mdbs_cursor_put"
 external cursor_del
-  : [> `Read | `Write ] cursor -> PutFlags.t -> unit
+  : cursor -> PutFlags.t -> unit
   = "mdbs_cursor_del"
 external cursor_get
-  : [> `Read ] cursor ->
+  : cursor ->
     bigstring Block_option.t -> bigstring Block_option.t -> Ops.t ->
     bigstring * bigstring
   = "mdbs_cursor_get"
-external cursor_count : [> `Read ] cursor -> int
+external cursor_count : cursor -> int
   = "mdbs_cursor_count"
