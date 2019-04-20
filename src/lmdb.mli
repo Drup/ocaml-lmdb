@@ -161,6 +161,8 @@ module Map : sig
   module Conv : sig
     (** {2 Types } *)
 
+    type 'a t
+
     type bigstring =
       (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
     (** Bigstrings are used to transfer the raw serialised data into and out of
@@ -176,43 +178,41 @@ module Map : sig
     *)
     module Flags = Lmdb_bindings.DbiFlags
 
-    (** Signature of a converter module *)
-    module type S = sig
-      type t
-      val flags : Flags.t
-      (** Flags to be set on a map using this converter.
+    (** {2 Constructor and accessors} *)
+
+    val make :
+      ?flags:Flags.t ->
+      serialise:((int -> bigstring) -> 'a -> bigstring) ->
+      deserialise:(bigstring -> 'a) ->
+      'a t
+    (** [make ~serialise ~deserialise]
+        creates a converter from a serialising and a deserialising function
+
+        @param serialise [serialise alloc x]
+          [serialise] {e may} call [alloc len] {e once} to allocate a [bigstring] of size [len].
+          It then {e must} fill the serialised data of [x] into this [bigstring]
+          and return {e exactly this} bigstring. If [serialise] didn't call [alloc] it may
+          return any [bigstring].
+
+          If [serialise] calls [alloc] the library can utilise the [MDB_RESERVE]
+          interface when appropriate to avoid calls to [malloc] and [memcpy].
+
+        @param deserialise [deserialise b]
+          The bigstring [b] is only valid as long as the current transaction.
+          It is therefore strongly recommended not to leak [b] out of [read].
+
+        @param flags Flags to be set on a map using this converter.
 
           Depending on the use of a converter as {e key} or {e value}
           {!Map.create} and {!Map.open_existing} will select the correct set of
           flags: [_key] flags will be used for keys and [_dup] flags will be
           used for values on maps supporting duplicates.
-      *)
 
-      val read : bigstring -> t
-      (** [read b] deserialises the bigstring [b].
+    *)
 
-          The bigstring [b] is only valid as long as the current transaction.
-          It is therefore strongly recommended not to leak [b] out of [read].
-      *)
-
-      val write : (int -> bigstring) -> t -> bigstring
-      (** [write alloc x] serialises [x].
-
-          [write] {e may} call [alloc len] {e once} to allocate a [bigstring] of size [len].
-          It then {e must} fill the serialised data of [x] into this [bigstring]
-          and return {e exactly this} bigstring. If [write] didn't call [alloc] it may
-          return any [bigstring].
-
-          If [write] calls [alloc] the library can utilise the [MDB_RESERVE]
-          interface when appropriate to avoid calls to [malloc] and [memcpy].
-      *)
-    end
-
-    (** ['a t] is a first-class converter module. *)
-    type 'a t
-
-    val mk : (module S with type t = 'a) -> 'a t
-    val as_module : 'a t -> (module S with type t = 'a)
+    val serialise : 'a t -> (int -> bigstring) -> 'a -> bigstring
+    val deserialise : 'a t -> bigstring -> 'a
+    val flags : _ t -> Flags.t
 
     (** {2 Predefined converters } *)
 
@@ -250,21 +250,6 @@ module Map : sig
     val int64_be_as_int :int t
     val int32_le_as_int :int t
     val int64_le_as_int :int t
-
-    (** {2 Underlying modules } *)
-
-    (** These underlying modules may be useful when writing custom converters *)
-
-    module Bigstring       :S with type t = bigstring
-    module String          :S with type t = string
-    module Int32_be        :S with type t = Int32.t
-    module Int64_be        :S with type t = Int64.t
-    module Int32_le        :S with type t = Int32.t
-    module Int64_le        :S with type t = Int64.t
-    module Int32_be_as_int :S with type t = int
-    module Int64_be_as_int :S with type t = int
-    module Int32_le_as_int :S with type t = int
-    module Int64_le_as_int :S with type t = int
   end
 
   (** A handle for a map from keys of type ['key] to values of type ['value]. *)

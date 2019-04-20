@@ -146,160 +146,150 @@ module Map = struct
 
     module Flags = Mdb.DbiFlags
 
-    module type S = sig
-      type t
-      val flags : Flags.t
-      val read : Bigstring.t -> t
-      val write : (int -> Bigstring.t) -> t -> Bigstring.t
-    end
-
     type 'a t = {
       flags : Flags.t ;
       read : Bigstring.t -> 'a ;
       write : (int -> Bigstring.t) -> 'a -> Bigstring.t ;
     }
-    let mk (type a) (module M : S with type t = a) =
-      let open M in { flags ; read ; write }
-    let as_module (type a) { flags ; read ; write } =
-      let module M = struct
-        type t = a
-        let flags = flags
-        let read = read
-        let write = write
-      end
-      in
-      (module M : S with type t = a)
+
+    let make ?(flags=Flags.none) ~serialise ~deserialise =
+      { flags = flags
+      ; read = deserialise
+      ; write = serialise }
+
+    let serialise { write; _ } = write
+    let deserialise { read; _ } = read
+    let flags { flags; _ } = flags
 
     let is_int_size n = n = Mdb.sizeof_int || n = Mdb.sizeof_size_t
 
-    module Int32_be = struct
-      type t = Int32.t
-      let flags =
-        if Sys.big_endian && is_int_size 4
-        then Flags.(integer_key + integer_dup + dup_fixed)
-        else Flags.(dup_fixed)
-      let read a = Bigstring.get_int32_be a 0
-      let write alloc x =
-        let a = alloc 4 in
-        Bigstring.set_int32_be a 0 x;
-        a
-    end
+    let int32_be =
+      { flags =
+          if Sys.big_endian && is_int_size 4
+          then Flags.(integer_key + integer_dup + dup_fixed)
+          else Flags.(dup_fixed)
+      ; write = begin fun alloc x ->
+          let a = alloc 4 in
+          Bigstring.set_int32_be a 0 x;
+          a
+        end
+      ; read = begin fun a ->
+          Bigstring.get_int32_be a 0
+        end
+      }
 
-    module Int32_le = struct
-      type t = Int32.t
-      let flags =
-        if not Sys.big_endian && is_int_size 4
-        then Flags.(integer_key + integer_dup + dup_fixed)
-        else Flags.(reverse_key + reverse_dup + dup_fixed)
-      let read a = Bigstring.get_int32_le a 0
-      let write alloc x =
-        let a = alloc 4 in
-        Bigstring.set_int32_le a 0 x;
-        a
-    end
+    let int32_le =
+      { flags =
+          if not Sys.big_endian && is_int_size 4
+          then Flags.(integer_key + integer_dup + dup_fixed)
+          else Flags.(reverse_key + reverse_dup + dup_fixed)
+      ; write = begin fun alloc x ->
+          let a = alloc 4 in
+          Bigstring.set_int32_le a 0 x;
+          a
+        end
+      ; read = begin fun a ->
+          Bigstring.get_int32_le a 0
+        end
+      }
 
-    module Int32_as_int (Conv :S with type t = Int32.t) : S with type t = int
-    = struct
-      type t = int
-      let flags = Conv.flags
-      let read =
-        if Sys.int_size >= 32
-        then fun a ->
-          Conv.read a |> Int32.to_int
-        else fun a ->
-          let ix = Conv.read a in
-          let i = Int32.to_int ix in
-          if Int32.of_int i = ix
-          then i
-          else invalid_arg "Lmdb: Integer truncated"
-      let write =
-        if Sys.int_size <= 32
-        then fun alloc i ->
-          Conv.write alloc @@ Int32.of_int i
-        else fun alloc i ->
-          let ix = Int32.of_int i in
-          if Int32.to_int ix = i
-          then Conv.write alloc ix
-          else invalid_arg "Lmdb: Integer truncated"
-    end
+    let int32_as_int { flags; read; write } =
+      { flags
+      ; write = begin
+          if Sys.int_size <= 32
+          then fun alloc i ->
+            write alloc @@ Int32.of_int i
+          else fun alloc i ->
+            let ix = Int32.of_int i in
+            if Int32.to_int ix = i
+            then write alloc ix
+            else invalid_arg "Lmdb: Integer truncated"
+        end
+      ; read = begin
+          if Sys.int_size >= 32
+          then fun a ->
+            read a |> Int32.to_int
+          else fun a ->
+            let ix = read a in
+            let i = Int32.to_int ix in
+            if Int32.of_int i = ix
+            then i
+            else invalid_arg "Lmdb: Integer truncated"
+        end
+      }
 
-    module Int32_be_as_int = Int32_as_int (Int32_be)
-    module Int32_le_as_int = Int32_as_int (Int32_le)
+    let int32_be_as_int = int32_as_int int32_be
+    let int32_le_as_int = int32_as_int int32_le
 
-    module Int64_be = struct
-      type t = Int64.t
-      let flags =
-        if Sys.big_endian && is_int_size 8
-        then Flags.(integer_key + integer_dup + dup_fixed)
-        else Flags.(dup_fixed)
-      let read a = Bigstring.get_int64_be a 0
-      let write alloc x =
-        let a = alloc 8 in
-        Bigstring.set_int64_be a 0 x;
-        a
-    end
+    let int64_be =
+      { flags =
+          if Sys.big_endian && is_int_size 8
+          then Flags.(integer_key + integer_dup + dup_fixed)
+          else Flags.(dup_fixed)
+      ; write = begin fun alloc x ->
+          let a = alloc 8 in
+          Bigstring.set_int64_be a 0 x;
+          a
+        end
+      ; read = begin fun a ->
+          Bigstring.get_int64_be a 0
+        end
+      }
 
-    module Int64_le = struct
-      type t = Int64.t
-      let flags =
-        if not Sys.big_endian && is_int_size 8
-        then Flags.(integer_key + integer_dup + dup_fixed)
-        else Flags.(reverse_key + reverse_dup + dup_fixed)
-      let read a = Bigstring.get_int64_le a 0
-      let write alloc x =
-        let a = alloc 8 in
-        Bigstring.set_int64_le a 0 x;
-        a
-    end
+    let int64_le =
+      { flags =
+          if not Sys.big_endian && is_int_size 8
+          then Flags.(integer_key + integer_dup + dup_fixed)
+          else Flags.(reverse_key + reverse_dup + dup_fixed)
+      ; write = begin fun alloc x ->
+          let a = alloc 8 in
+          Bigstring.set_int64_le a 0 x;
+          a
+        end
+      ; read = begin fun a ->
+          Bigstring.get_int64_le a 0
+        end
+      }
 
-    module Int64_as_int (Conv :S with type t = Int64.t) :S with type t = int
-    = struct
-      type t = int
-      let flags = Conv.flags
-      let read =
-        if Sys.int_size >= 64
-        then fun a ->
-          Conv.read a |> Int64.to_int
-        else fun a ->
-          let ix = Conv.read a in
-          let i = Int64.to_int ix in
-          if Int64.of_int i = ix
-          then i
-          else invalid_arg "Lmdb: Integer truncated"
-      let write alloc i =
-          Conv.write alloc @@ Int64.of_int i
-    end
+    let int64_as_int { flags; read; write } =
+      { flags
+      ; write = begin fun alloc i ->
+          write alloc @@ Int64.of_int i
+        end
+      ; read = begin
+          if Sys.int_size >= 64
+          then fun a ->
+            read a |> Int64.to_int
+          else fun a ->
+            let ix = read a in
+            let i = Int64.to_int ix in
+            if Int64.of_int i = ix
+            then i
+            else invalid_arg "Lmdb: Integer truncated"
+        end
+      }
 
-    module Int64_be_as_int = Int64_as_int (Int64_be)
-    module Int64_le_as_int = Int64_as_int (Int64_le)
-    let int32_be        = mk (module Int32_be)
-    let int32_le        = mk (module Int32_le)
-    let int64_be        = mk (module Int64_be)
-    let int64_le        = mk (module Int64_le)
-    let int32_be_as_int = mk (module Int32_be_as_int)
-    let int32_le_as_int = mk (module Int32_le_as_int)
-    let int64_be_as_int = mk (module Int64_be_as_int)
-    let int64_le_as_int = mk (module Int64_le_as_int)
+    let int64_be_as_int = int64_as_int int64_be
+    let int64_le_as_int = int64_as_int int64_le
 
-    module String = struct
-      type t = string
-      let flags = Flags.none
-      let read a = Bigstring.substring a ~off:0 ~len:(Bigstring.length a)
-      let write alloc s =
-        let len = String.length s in
-        let a = alloc len in
-        Bigstring.blit_from_string s ~src_off:0 a ~dst_off:0 ~len;
-        a
-    end
-    let string = mk (module String)
+    let string =
+      { flags = Flags.none
+      ; write = begin fun alloc s ->
+          let len = String.length s in
+          let a = alloc len in
+          Bigstring.blit_from_string s ~src_off:0 a ~dst_off:0 ~len;
+          a
+        end
+      ; read = begin fun a ->
+          Bigstring.substring a ~off:0 ~len:(Bigstring.length a)
+        end
+      }
 
-    module Bigstring = struct
-      type t = Bigstring.t
-      let flags = Flags.none
-      let read b = b
-      let write _ b = b
-    end
-    let bigstring = mk (module Bigstring)
+    let bigstring =
+      { flags = Flags.none
+      ; write = (fun _ b -> b)
+      ; read = (fun b -> b)
+      }
   end
 
   type ('k, 'v, -'perm, -'dup) t =
