@@ -17,7 +17,7 @@ let pp_error fmt i =
 
 module Env = struct
 
-  type -'perm t = 'perm Mdb.env constraint 'perm = [< `Read | `Write ]
+  type -'perm t = Mdb.env constraint 'perm = [< `Read | `Write ]
 
   (* exception Assert of (t * string) *)
 
@@ -83,7 +83,7 @@ end
 
 module Txn :
 sig
-  type -'perm t = 'perm Mdb.txn constraint 'perm = [< `Read | `Write ]
+  type -'perm t = Mdb.txn constraint 'perm = [< `Read | `Write ]
 
   val go :
     ?perm:'perm perm ->
@@ -105,7 +105,7 @@ sig
 end
 =
 struct
-  type -'perm t = 'perm Mdb.txn constraint 'perm = [< `Read | `Write ]
+  type -'perm t = Mdb.txn constraint 'perm = [< `Read | `Write ]
 
   exception Abort of Obj.t
 
@@ -466,7 +466,7 @@ module Cursor = struct
   module Flags = Mdb.PutFlags
 
   type ('k, 'v, -'perm, -'dup) t =
-    { cursor: 'perm Mdb.cursor
+    { cursor: Mdb.cursor
     ; map: ('k, 'v, 'perm, 'dup) Map.t }
     constraint 'perm = [< `Read | `Write ]
     constraint 'dup = [< `Dup | `Uni ]
