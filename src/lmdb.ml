@@ -17,7 +17,7 @@ let pp_error fmt i =
 
 module Env = struct
 
-  type -'perm t = Mdb.env constraint 'perm = [< `Read | `Write ]
+  type t = Mdb.env
 
   (* exception Assert of (t * string) *)
 
@@ -80,30 +80,7 @@ module Env = struct
   let stats = Mdb.env_stat
 end
 
-module Txn :
-sig
-  type -'perm t = Mdb.txn constraint 'perm = [< `Read | `Write ]
-
-  val go :
-    'perm perm ->
-    ?txn:'perm t ->
-    'perm Env.t ->
-    ('perm t -> 'a) -> 'a option
-
-
-  val abort : _ t -> 'b
-
-  val env : 'perm t -> 'perm Env.t
-
-  (* not exported: *)
-  val trivial :
-    'perm perm ->
-    ?txn:'perm t ->
-    'perm Env.t ->
-    ('perm t -> 'a) -> 'a
-end
-=
-struct
+module Txn = struct
   type -'perm t = Mdb.txn constraint 'perm = [< `Read | `Write ]
 
   exception Abort of Obj.t
@@ -294,14 +271,13 @@ module Conv = struct
 end
 
 module Map = struct
-  type ('k, 'v, -'perm, -'dup) t =
-    { env               :'perm Env.t
+  type ('k, 'v, -'dup) t =
+    { env               :Env.t
     ; mutable dbi       :Mdb.dbi
     ; flags             :Mdb.DbiFlags.t
     ; key               : 'k Conv.t
     ; value             : 'v Conv.t
     }
-    constraint 'perm = [< `Read | `Write ]
     constraint 'dup = [< `Dup | `Uni ]
 
   let env { env; _ } = env
@@ -318,8 +294,8 @@ module Map = struct
       ~(value   : value Conv.t)
       ?(txn     : 'openperm Txn.t option)
       ?(name    : string option)
-      (env      : 'perm Env.t)
-    :(key, value, 'perm, 'dup) t
+      (env      : Env.t)
+    :(key, value, 'dup) t
     =
     let create_of_perm (type p) (perm :p perm) =
       match perm with
@@ -452,9 +428,9 @@ module Cursor = struct
 
   type ('k, 'v, -'perm, -'dup) t =
     { cursor: Mdb.cursor
-    ; map: ('k, 'v, 'perm, 'dup) Map.t }
-    constraint 'perm = [< `Read | `Write ]
+    ; map: ('k, 'v, 'dup) Map.t }
     constraint 'dup = [< `Dup | `Uni ]
+    constraint 'perm = [< `Read | `Write ]
 
   exception Abort of Obj.t
 
