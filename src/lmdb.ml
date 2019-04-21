@@ -313,18 +313,24 @@ module Map = struct
   let nodup :[ `Uni ] card = Nodup
 
   let create
-      (dup      :([< `Dup | `Uni ] as 'dup) card)
+      (perm     : 'openperm perm)
+      (dup      : ([< `Dup | `Uni ] as 'dup) card)
       (type key value)
-      ~(key     :key Conv.t)
-      ~(value   :value Conv.t)
-      ?(txn     :'perm Txn.t option)
-      ?(name    :string option)
-      (env      :'perm Env.t)
+      ~(key     : key Conv.t)
+      ~(value   : value Conv.t)
+      ?(txn     : 'openperm Txn.t option)
+      ?(name    : string option)
+      (env      : 'perm Env.t)
     :(key, value, 'perm, 'dup) t
     =
+    let create_of_perm (type p) (perm : p perm) =
+      match perm with
+      | Ro -> Conv.Flags.none
+      | Rw -> Conv.Flags.create
+    in
     let flags =
       let open Conv.Flags in
-      create +
+      create_of_perm perm +
       key.flags * (reverse_key + integer_key) +
       match dup with
       | Nodup -> Conv.Flags.none
@@ -333,13 +339,17 @@ module Map = struct
         value.flags * (dup_fixed + integer_dup + reverse_dup)
     in
     let dbi, flags =
-      Txn.trivial Rw env ?txn @@ fun txn ->
+      Txn.trivial perm ?txn (Obj.magic env) @@ fun txn ->
       let dbi = Mdb.dbi_open txn name flags in
-      let flags = Mdb.dbi_flags txn dbi in
-      begin match dup with
-        | Dup when not (Conv.Flags.(test dup_sort) flags) ->
-          invalid_arg "Lmdb.Map.create: duplicates not supported on this map"
-        | Dup | Nodup -> ()
+      let flags' = Mdb.dbi_flags txn dbi in
+      if not Conv.Flags.(eq (unset create flags) flags')
+      then begin
+        Mdb.dbi_close env dbi;
+        Printf.sprintf "Lmdb.Map.create: While opening %s got flags %0#x, but expected %0#x\n"
+          (match name with None -> "<unnamed>" | Some name -> name)
+          (Conv.Flags.to_int flags')
+          (Conv.Flags.to_int flags)
+        |> invalid_arg
       end;
       dbi, flags
     in
@@ -349,34 +359,13 @@ module Map = struct
       db_t;
     db_t
 
-  let open_existing
-      (dup       :([< `Dup | `Uni ] as 'dup) card)
-      (type key value)
-      ~(key     :key Conv.t)
-      ~(value   :value Conv.t)
-      ?(txn     :_ Txn.t option)
-      ?(name    :string option)
-      (env      :'perm Env.t)
-    :(key, value, 'perm, 'dup) t
-    =
-    let dbi, flags =
-      Txn.trivial Ro
-        (env :> [ `Read ] Env.t)
-        ?txn:(txn :> [ `Read ] Txn.t option) @@ fun txn ->
-      let dbi = Mdb.dbi_open txn name Mdb.DbiFlags.none in
-      let flags = Mdb.dbi_flags txn dbi in
-      begin match dup with
-        | Dup when not (Conv.Flags.(test dup_sort) flags) ->
-          invalid_arg "Lmdb.Map.create: duplicates not supported on this map"
-        | Dup | Nodup -> ()
-      end;
-      dbi, flags
-    in
-    let db_t = { env; dbi; flags; key; value } in
-    Gc.finalise
-      (fun {env; dbi; _} -> if dbi != Mdb.invalid_dbi then Mdb.dbi_close env dbi)
-      db_t;
-    db_t
+  let create dup ~key ~value ?txn ?name env =
+    create Rw dup ~key ~value ?txn ?name env
+  and open_existing dup ~key ~value ?txn ?name env =
+    create Ro dup ~key ~value
+      ?txn:(txn :> [ `Read ] Txn.t option)
+      ?name
+      env
 
   let stats ?txn {env; dbi; _} =
     Txn.trivial Ro

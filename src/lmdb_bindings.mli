@@ -32,6 +32,10 @@ module type Flags = sig
   (** [test a b] is [true] only if [a] is a subset of [b].
       This corresponds to [a & b == a] for C bitfields. *)
 
+  val unset : t -> t -> t
+  (** [unset a b] removes flags [a] from flag set [b].
+      This corresponds to [a & ~b] for C bitfields. *)
+
   external eq : t -> t -> bool = "%equal"
   (** [eq a b] The equals relation. *)
 

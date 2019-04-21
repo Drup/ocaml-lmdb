@@ -74,6 +74,7 @@ module type Flags = sig
   external ( + ) : t -> t -> t = "%orint"
   external ( * ) : t -> t -> t = "%andint"
   val test : t -> t -> bool
+  val unset : t -> t -> t
   external eq : t -> t -> bool = "%equal"
   external of_int : int -> t   = "%identity"
   external to_int : t -> int   = "%identity"
@@ -84,6 +85,7 @@ module Flags :Flags with type t = int = struct
   external ( + ) : t -> t -> t = "%orint"
   external ( * ) : t -> t -> t = "%andint"
   let test f m = f * m = f
+  let unset kill flags = flags * lnot kill
   external eq : t -> t -> bool = "%equal"
   external of_int : int -> t   = "%identity"
   external to_int : t -> int   = "%identity"
