@@ -17,8 +17,8 @@
     {{:http://www.lmdb.tech/doc/starting.html}LMDB documentation}, but called
     {e maps} in these OCaml bindings.
 
-    A single [('keyey, 'valuealue, [< `Read | `Write])] {!type: Map.t} is a key-value store mapping
-    OCaml values of type ['keyey] to values of type ['valuealue].
+    A single [('key, 'value, [< `Read | `Write])] {!type: Map.t} is a key-value store mapping
+    OCaml values of type ['key] to values of type ['value].
     Multiple values per key are supported on request.
 
     Using {!Map}, we can open the unnamed map and add our first value:
