@@ -738,23 +738,47 @@ module Cursor = struct
     Mdb.cursor_del cursor.cursor
       (if all then Flags.no_dup_data else Flags.none)
 
+  let fold_prim init step ?cursor ~f acc map =
+    let fold cursor =
+      match init cursor
+      with
+      | exception Not_found -> acc
+      | key, value ->
+        let acc = f acc key value in
+        let rec loop acc =
+          match step cursor
+          with
+          | exception Not_found -> acc
+          | key, value ->
+            let acc = f acc key value in
+            loop acc
+        in loop acc
+    in
+    trivial Ro (map :> (_, _, [ `Read ], _) Map.t)
+      ?cursor:(cursor :> (_, _, [ `Read ], _) t option)
+      fold
+
+  let fold_left ?cursor ~f acc map =
+    fold_prim first next ?cursor ~f acc map
+
+  let fold_right ?cursor ~f map acc =
+    let f acc key values = f key values acc in
+    fold_prim last prev ?cursor ~f acc map
+
+  let iter ?cursor ~f map =
+    fold_left ?cursor () map ~f:(fun () -> f)
+
   let fold_prim_all init step get_all ?cursor ~f acc map =
     let fold cursor =
-      match
-        try Some (init cursor)
-        with Not_found -> None
-      with
-      | None -> acc
-      | Some (key,first) ->
+      match init cursor with
+      | exception Not_found -> acc
+      | key, first ->
         let values = get_all cursor first in
         let acc = f acc key values in
         let rec loop acc =
-          match
-            try Some (step cursor)
-            with Not_found -> None
-          with
-          | None -> acc
-          | Some (key,first) ->
+          match step cursor with
+          | exception Not_found -> acc
+          | key, first ->
             let values = get_all cursor first in
             let acc = f acc key values in
             loop acc
@@ -774,9 +798,4 @@ module Cursor = struct
 
   let iter_all ?cursor ~f map =
     fold_left_all ?cursor () map ~f:(fun () -> f)
-
-  (* The following two operations are not exposed, due to inherent unsafety:
-     - Ops.get_multiple
-     - Ops.next_multiple
-  *)
 end

@@ -71,23 +71,33 @@ let test_nodup =
       end
     in loop 12;
     end
-  ; "fold_left_all", `Quick, begin fun () ->
-      Cursor.fold_left_all 12 map
-        ~f:begin fun n key values ->
+  ; "fold_left", `Quick, begin fun () ->
+      Cursor.fold_left 12 map
+        ~f:begin fun n key value ->
           check int "key" n key;
-          check (array int) "values" [|n|] values;
+          check int "values" n value;
           (n * 2)
         end
       |> check int "last_key" 805306368
     end
-  ; "fold_right_all", `Quick, begin fun () ->
-      Cursor.fold_right_all map 402653184
-        ~f:begin fun key values n ->
+  ; "fold_right", `Quick, begin fun () ->
+      Cursor.fold_right map 402653184
+        ~f:begin fun key value n ->
           check int "key" n key;
-          check (array int) "values" [|n|] values;
+          check int "values" n value;
           (n / 2)
         end
       |> check int "last_key" 6
+    end
+  ; "iter", `Quick, begin fun () ->
+      let n = ref 12 in
+      Cursor.iter map
+        ~f:begin fun key value ->
+          check int "key" !n key;
+          check int "values" !n value;
+          n := value * 2;
+        end;
+      check int "last_kv" 805306368 !n
     end
   ; "put first", `Quick, begin fun () ->
       ignore @@ Cursor.go Rw map ?txn:None @@ fun cursor ->
@@ -208,6 +218,37 @@ let test_dup =
         end
       in loop 12;
     end
+  ; "fold_left", `Quick, begin fun () ->
+      Cursor.fold_left (12, 12) map
+        ~f:begin fun (n,m) key value ->
+          check_kv "kv pair" (n,m) (key,value);
+          if m*2 <= 536870912
+          then (n, m * 2)
+          else (n * 2, n * 2)
+        end
+      |> fst |> check int "last_key" 805306368
+    end
+  ; "fold_right", `Quick, begin fun () ->
+      Cursor.fold_right map (402653184, 402653184)
+        ~f:begin fun  key value (n,m) ->
+          check_kv "kv pair" (n,m) (key,value);
+          if m > n
+          then (n, m / 2)
+          else (n / 2, 402653184)
+        end
+      |> fst |> check int "last_key" 6
+    end
+  ; "iter", `Quick, begin fun () ->
+      let kv = ref (12,12) in
+      Cursor.iter map
+        ~f:begin fun key value ->
+          check_kv "kv pair" !kv (key,value);
+          if value*2 <= 536870912
+          then kv := (key, value * 2)
+          else kv := (key * 2, key * 2)
+        end;
+      check_kv "last_kv" (805306368,805306368) !kv
+    end
   ; "fold_left_all", `Quick, begin fun () ->
       Cursor.fold_left_all 12 map
         ~f:begin fun n key values ->
@@ -218,8 +259,8 @@ let test_dup =
               loop_dup (i+1) (m * 2);
             end
             else check int "no extra dups" i (Array.length values)
-          in loop_dup 0 n;
-          (n * 2)
+          in loop_dup 0 key;
+          (key * 2)
         end
       |> check int "last_key" 805306368
     end
@@ -233,17 +274,26 @@ let test_dup =
               loop_dup (i+1) (m * 2);
             end
             else check int "no extra dups" i (Array.length values)
-          in loop_dup 0 n;
-          (n / 2)
+          in loop_dup 0 key;
+          (key / 2)
         end
       |> check int "last_key" 6
     end
-  ; "iter_all", `Quick, begin fun () -> (* TODO: check the output automatically. *)
+  ; "iter_all", `Quick, begin fun () ->
+      let n = ref 12 in
       Cursor.iter_all map
         ~f:begin fun key values ->
-          Printf.printf "(%d, [%s]\n" key
-            (Array.map string_of_int values |> Array.to_list |> String.concat ";");
-        end
+          check int "key" !n key;
+          let rec loop_dup i m =
+            if m <= 536870912 then begin
+              check int "dup" m values.(i);
+              loop_dup (i+1) (m * 2);
+            end
+            else check int "no extra dups" i (Array.length values)
+          in loop_dup 0 key;
+          n := (key * 2)
+        end;
+      check int "last_key" 805306368 !n
     end
   ; "first", `Quick, begin fun () ->
       ignore @@ Cursor.go Rw map ?txn:None @@ fun cursor ->
