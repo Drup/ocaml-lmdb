@@ -54,6 +54,28 @@ let[@warning "-26-27"] capabilities () =
 
 let check_kv = check (pair int int)
 
+let test_types =
+  "types",
+  let map =
+    Map.(create nodup
+           ~key:Conv.int32_be_as_int
+           ~value:Conv.int32_be_as_int
+           ~name:"Types") env
+  in
+  [ "value restriction", `Quick, begin fun () ->
+        ignore @@ Txn.go env ?txn:None @@ fun txn ->
+        Map.stats ~txn map |> ignore;
+        Map.put ~txn map 1 1;
+      end
+  ; "can read from writable", `Quick, begin fun () ->
+      ignore @@ Txn.go ~perm:Rw env
+        (fun (txn : [> `Write] Txn.t) -> Map.stats ~txn map |> ignore);
+    end
+  ; "ro txn on rw env", `Quick, begin fun () ->
+      Txn.go ~perm:Ro (env :> [ `Read ] Env.t) ignore |> ignore
+    end
+  ]
+
 let test_nodup =
   "no duplicates",
   let map =
@@ -186,8 +208,6 @@ let test_dup =
       check_raises "wrong txn" (Invalid_argument "Lmdb: transaction from wrong environment.") begin fun () ->
         ignore @@ Txn.go ~perm:Ro (env2 :> [ `Read ] Env.t)
           (fun txn -> Map.get ~txn map 0 |> ignore);
-        ignore @@ Txn.go ~perm:Rw env
-          (fun (txn : [> `Write] Txn.t) -> Map.get ~txn map 0 |> ignore);
       end;
       let map2 =
         Map.(create dup
@@ -448,4 +468,5 @@ let () =
     ; test_nodup
     ; test_dup
     ; test_int
+    ; test_types
     ]
