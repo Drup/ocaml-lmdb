@@ -299,14 +299,14 @@ module Map = struct
 
   let env { env; _ } = env
 
-  type 'a card = Dup | Nodup constraint 'a = [< `Dup | `Uni ]
-  let dup :[ `Uni | `Dup ] card = Dup
-  let nodup :[ `Uni ] card = Nodup
+  type 'a card =
+    | Nodup : [ `Uni ] card
+    | Dup : [ `Dup | `Uni ] card
 
   let create
+      (type dup key value)
       (perm     : 'openperm perm)
-      (dup      : ([< `Dup | `Uni ] as 'dup) card)
-      (type key value)
+      (dup      : (dup as 'dup) card)
       ~(key     : key Conv.t)
       ~(value   : value Conv.t)
       ?(txn     : 'openperm Txn.t option)

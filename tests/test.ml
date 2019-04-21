@@ -23,7 +23,7 @@ let () =
 
 let[@warning "-26-27"] capabilities () =
   let map =
-    Map.(create nodup
+    Map.(create Nodup
            ~key:Conv.int32_be_as_int
            ~value:Conv.int32_be_as_int
            ~name:"Capabilities") env
@@ -52,7 +52,7 @@ let check_kv = check (pair int int)
 let test_nodup =
   "no duplicates",
   let map =
-    Map.(create nodup
+    Map.(create Nodup
            ~key:Conv.int32_be_as_int
            ~value:Conv.int32_be_as_int
            ~name:"Map") env
@@ -124,7 +124,7 @@ let test_nodup =
     end
   ; "stress", `Slow, begin fun () ->
       let map =
-        Map.(create nodup
+        Map.(create Nodup
                ~key:Conv.int32_be_as_int
                ~value:Conv.string
                ~name:"map.string") env
@@ -154,7 +154,7 @@ let test_nodup =
 let test_dup =
   "duplicates",
   let map =
-    Map.(create dup
+    Map.(create Dup
            ~key:Conv.int32_be_as_int
            ~value:Conv.int32_be_as_int
            ~name:"Cursor") env
@@ -173,7 +173,7 @@ let test_dup =
           (fun txn -> Map.get ~txn map 0 |> ignore);
       end;
       let map2 =
-        Map.(create dup
+        Map.(create Dup
                ~key:Conv.int32_be_as_int
                ~value:Conv.int32_be_as_int
                ~name:"Cursor.wrongmap") env
@@ -361,7 +361,7 @@ let test_int =
     name, `Quick,
     begin fun () ->
       let map =
-        Map.(create dup
+        Map.(create Dup
            ~key:conv
            ~value:conv
            ~name) env
