@@ -362,16 +362,10 @@ module Map = struct
   let create dup ~key ~value ?txn ?name env =
     create Rw dup ~key ~value ?txn ?name env
   and open_existing dup ~key ~value ?txn ?name env =
-    create Ro dup ~key ~value
-      ?txn:(txn :> [ `Read ] Txn.t option)
-      ?name
-      env
+    create Ro dup ~key ~value ?txn ?name env
 
   let stats ?txn {env; dbi; _} =
-    Txn.trivial Ro
-      ?txn:(txn :> [ `Read ] Txn.t option)
-      (env :> [ `Read ] Env.t)
-    @@ fun txn ->
+    Txn.trivial Ro ?txn env @@ fun txn ->
     Mdb.dbi_stat txn dbi
 
   let _flags ?txn {env; dbi; _} =
@@ -384,10 +378,7 @@ module Map = struct
     Mdb.drop txn dbi delete
 
   let get map ?txn k =
-    Txn.trivial Ro
-      ?txn:(txn :> [ `Read ] Txn.t option)
-      (map.env :> [ `Read ] Env.t)
-    @@ fun txn ->
+    Txn.trivial Ro ?txn map.env @@ fun txn ->
     Mdb.get txn map.dbi (map.key.serialise Bigstring.create k)
     |> map.value.deserialise
 
@@ -437,10 +428,7 @@ module Map = struct
     let key = map.key in
     let xa = key.serialise Bigstring.create x in
     let ya = key.serialise Bigstring.create y in
-    Txn.trivial Ro
-      ?txn:(txn :> [ `Read ] Txn.t option)
-      (map.env :> [ `Read ] Env.t)
-    @@ fun txn ->
+    Txn.trivial Ro ?txn map.env @@ fun txn ->
     Mdb.cmp txn map.dbi xa ya
 
   let compare_val map ?txn =
@@ -450,10 +438,7 @@ module Map = struct
     fun x y ->
     let xa = value.serialise Bigstring.create x in
     let ya = value.serialise Bigstring.create y in
-    Txn.trivial Ro
-      ?txn:(txn :> [ `Read ] Txn.t option)
-      (map.env :> [ `Read ] Env.t)
-    @@ fun txn ->
+    Txn.trivial Ro ?txn map.env @@ fun txn ->
     Mdb.dcmp txn map.dbi xa ya
 
   let compare = compare_key
@@ -743,9 +728,7 @@ module Cursor = struct
             loop acc
         in loop acc
     in
-    trivial Ro (map :> (_, _, [ `Read ], _) Map.t)
-      ?cursor:(cursor :> (_, _, [ `Read ], _) t option)
-      fold
+    trivial Ro map ?cursor fold
 
   let fold_left ?cursor ~f acc map =
     fold_prim first next ?cursor ~f acc map
@@ -773,10 +756,7 @@ module Cursor = struct
             loop acc
         in loop acc
     in
-    trivial Ro
-      ?cursor:(cursor :> (_, _, [ `Read ], 'dup) t option)
-      (map :> (_, _, [ `Read ], 'dup) Map.t)
-      fold
+    trivial Ro ?cursor map fold
 
   let fold_left_all ?cursor ~f acc map =
     fold_prim_all first next_nodup get_values_from_first ?cursor ~f acc map
