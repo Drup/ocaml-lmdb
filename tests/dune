@@ -5,12 +5,6 @@
 )
 
 (executable
- (name version)
- (modules version)
- (libraries lmdb)
-)
-
-(executable
  (name bench)
  (modules bench)
  (libraries benchmark lmdb)
@@ -21,11 +15,6 @@
  (modules test)
  (libraries alcotest lmdb)
  (action (run %{test} -q))
-)
-
-(alias
- (name runtest)
- (action (run ./version.exe))
 )
 
 (alias
