@@ -137,7 +137,6 @@ end
     ('perm t -> 'a) -> 'a option
 
 
-
   (** [abort txn] aborts transaction [txn] and the current [go] function,
       which will return [None].
   *)
@@ -258,13 +257,9 @@ module Map : sig
     constraint 'perm = [< `Read | `Write ]
     constraint 'dup = [< `Dup | `Uni ]
 
-  type 'a card constraint 'a = [< `Dup | `Uni ]
-
-  (** Request support for sorted duplicates. *)
-  val dup :[ `Uni | `Dup ] card
-
-  (** Do not request support for sorted duplicates. *)
-  val nodup :[ `Uni ] card
+  type 'a card =
+    | Nodup : [ `Uni ] card
+    | Dup : [ `Dup | `Uni ] card
 
   (** [create dup ~key ~value env]
       open (and possibly create) a map in the environment [env].
