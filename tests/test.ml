@@ -1,6 +1,11 @@
 open Alcotest
 open Lmdb
 
+let () =
+  let (s,major,minor,patch) = Lmdb.version in
+  Printf.printf "Version: %s\nOr: (%i,%i,%i)\nOCaml Version: %s\n%!"
+    s major minor patch Sys.ocaml_version
+
 let filename =
   let rec tmp_filename base suffix n =
     let name = Printf.sprintf "%s.%u%s" base n suffix in
