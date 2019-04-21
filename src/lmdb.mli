@@ -415,24 +415,45 @@ end
 
   (** {2 Iterators} *)
 
+  (** Call [f] once for each key-value pair.
+      Will call [f] multiple times with the same key for duplicates *)
+
+  val iter :
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    f:('key -> 'value -> unit) ->
+    ('key, 'value, 'perm, 'dup) Map.t ->
+    unit
+
+  val fold_left :
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    f:('a -> 'key -> 'value -> 'a) -> 'a ->
+    ('key, 'value, 'perm, 'dup) Map.t ->
+    'a
+
+  val fold_right :
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    f:('key -> 'value -> 'a -> 'a) ->
+    ('key, 'value, 'perm, 'dup) Map.t ->
+    'a -> 'a
+
   (** Call [f] once for each key passing the key and {e all} associated values. *)
 
   val iter_all :
     ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
     f:('key -> 'value array -> unit) ->
-    ('key, 'value, 'perm, 'dup) Map.t ->
+    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
     unit
 
   val fold_left_all :
     ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
     f:('a -> 'key -> 'value array -> 'a) -> 'a ->
-    ('key, 'value, 'perm, 'dup) Map.t ->
+    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
     'a
 
   val fold_right_all :
     ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
     f:('key -> 'value array -> 'a -> 'a) ->
-    ('key, 'value, 'perm, 'dup) Map.t ->
+    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
     'a -> 'a
 
 
