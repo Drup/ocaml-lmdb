@@ -17,14 +17,15 @@ let filename =
 
 let env =
   Env.create Rw
-    ~flags:Env.Flags.(no_subdir + no_sync + no_lock + no_mem_init)
+    ~flags:Env.Flags.(no_subdir + no_sync + no_mem_init)
     ~map_size:104857600
     ~max_maps:10
     filename
 let () =
   at_exit @@ fun () ->
   Env.close env;
-  Sys.remove filename
+  Sys.remove filename;
+  Sys.remove (filename ^ "-lock")
 
 let[@warning "-26-27"] capabilities () =
   let map =
@@ -127,34 +128,8 @@ let test_nodup =
   ; "Not_found", `Quick, begin fun () ->
       check_raises "Not_found" Not_found (fun () -> Map.get map 4285 |> ignore)
     end
-  ; "stress", `Slow, begin fun () ->
-      let map =
-        Map.(create Nodup
-               ~key:Conv.int32_be_as_int
-               ~value:Conv.string
-               ~name:"map.string") env
-      in
-      let buf = String.make 1024 'X' in
-      let n = 10000 in
-      for _i=1 to 100 do
-        for i=0 to n do
-          Map.put map i buf;
-        done;
-        for i=0 to n do
-          let v =
-            try
-            Map.get map i
-            with Not_found ->
-              failwith ("got Not_found for " ^ string_of_int i)
-          in
-          if (v <> buf)
-          then fail "memory corrupted ?"
-        done;
-        Map.drop ~delete:false map
-      done;
-      Map.drop ~delete:true map
-    end
   ]
+
 
 let test_dup =
   "duplicates",
@@ -390,10 +365,60 @@ let test_int =
   ; make_test "int64_le" Map.Conv.int64_le_as_int
   ]
 
+let test_stress =
+  "threaded GC stress",
+  let stress duration () =
+    let map =
+      Map.(create Nodup
+             ~key:Conv.string
+             ~value:Conv.string
+             ~name:"map.string") env
+    in
+    let mutex = Mutex.create () in
+    let errors = ref 0 in
+    let running = ref true in
+    let n = 100 in
+    let rec worker thread_id =
+      let offset = thread_id * n in
+      for i = offset to offset + n - 1 do
+        let dig = Digest.string @@ string_of_int i in
+        Map.put map dig dig
+      done;
+      for i = offset to offset + n - 1 do
+        let dig = Digest.string @@ string_of_int i in
+        if Map.get map dig <> dig
+        then begin
+          Mutex.lock mutex;
+          incr errors;
+          Mutex.unlock mutex;
+        end
+        else Map.remove map dig
+      done;
+      if !running then worker thread_id
+    in
+    let rec stress_gc () =
+      Gc.minor ();
+      Thread.yield ();
+      if !running then stress_gc ()
+    in
+    Gc.full_major ();
+    Thread.create stress_gc () |> ignore;
+    let threads = Array.init 8 (Thread.create worker) in
+    Thread.delay duration;
+    running := false;
+    Array.iter Thread.join threads;
+    check int "wrong reads" 0 !errors;
+    Map.drop ~delete:true map
+  in
+  [ "stress 1s", `Quick, stress 1.
+  ; "stress 500s", `Slow, stress 500.
+  ]
+
 let () =
   run "Lmdb"
     [ "capabilities", [ "capabilities", `Quick, capabilities ]
     ; test_nodup
     ; test_dup
     ; test_int
+    ; test_stress
     ]
