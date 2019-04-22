@@ -192,8 +192,11 @@ module Map : sig
           It then {e must} fill the serialised data of [x] into this [bigstring]
           and return {e exactly this} bigstring. If [serialise] didn't call [alloc] it may
           return any [bigstring].
+          [alloc] may return uninitialised memory. It is therefore recommended
+          that [serialise] overwrites the all allocated memory to avoid leaking possibly
+          sensitive memory content into the database.
 
-          If [serialise] calls [alloc] the library can utilise the [MDB_RESERVE]
+          If [serialise] calls [alloc] the library may utilise the [MDB_RESERVE]
           interface when appropriate to avoid calls to [malloc] and [memcpy].
 
         @param deserialise [deserialise b]
