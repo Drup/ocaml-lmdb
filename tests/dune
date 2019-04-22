@@ -12,7 +12,7 @@
 
 (test
  (name test)
- (modules test)
+ (modules pr test)
  (flags :standard -thread)
  (libraries alcotest lmdb threads)
  (action

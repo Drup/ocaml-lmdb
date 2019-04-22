@@ -495,4 +495,5 @@ let () =
     ; test_int
     ; test_types
     ; test_stress
+    ; Pr.test
     ]
