@@ -13,8 +13,13 @@
 (test
  (name test)
  (modules test)
- (libraries alcotest lmdb)
- (action (run %{test} -q))
+ (flags :standard -thread)
+ (libraries alcotest lmdb threads)
+ (action
+  (setenv MALLOC_CHECK_ 3
+    (setenv MALLOC_PERTURB_ 195
+      (run %{test} --color=always -q)))
+ )
 )
 
 (alias
