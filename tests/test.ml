@@ -487,6 +487,14 @@ let test_stress =
   ; "stress 300s", `Slow, stress 300.
   ]
 
+let test_regress =
+  "regression tests",
+    [ "unnamed dbi", `Quick, begin fun () ->
+          Map.(open_existing Nodup ~key:Conv.string ~value:Conv.string) env
+          |> ignore
+        end
+    ]
+
 let () =
   run "Lmdb"
     [ "capabilities", [ "capabilities", `Quick, capabilities ]
@@ -495,5 +503,6 @@ let () =
     ; test_int
     ; test_types
     ; test_stress
+    ; test_regress
     ; Pr.test
     ]
