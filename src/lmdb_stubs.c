@@ -183,9 +183,8 @@ CAMLprim value mdbs_env_create(value unit)
 
 CAMLprim value mdbs_env_open(value env, value path, value flags, value mode)
 {
-  int len = caml_string_length(path);
-  char cpath[++len]; /* ++ for null byte */
-  memcpy(cpath, String_val(path), len);
+  char cpath[caml_string_length(path) + 1];
+  memcpy(cpath, String_val(path), sizeof(cpath));
 
   mdbs_err_rel(mdb_env_open(
 	unhide(env),
@@ -321,9 +320,8 @@ CAMLprim value mdbs_stat(value txn, value dbi)
 
 CAMLprim value mdbs_env_copy2(value env, value path, value flags)
 {
-  int len = caml_string_length(path);
-  char cpath[++len]; /* ++ for null byte */
-  memcpy(cpath, String_val(path), len);
+  char cpath[caml_string_length(path) + 1];
+  memcpy(cpath, String_val(path), sizeof(cpath));
 
   mdbs_err_rel(mdb_env_copy2(
 	unhide(env),
@@ -461,18 +459,15 @@ CAMLprim value mdbs_txn_abort(value txn)
 CAMLprim value mdbs_dbi_open(value txn, value name, value flags)
 {
   MDB_dbi dbi;
-  int len;
+
+  char cname[Is_block(name) ? caml_string_length(Field(name, 0)) + 1 : 0];
 
   if (Is_block(name)) {
     CAMLassert(Tag_val(Field(name,0)) == String_tag);
-    len = caml_string_length(Field(name, 0));
+    memcpy(cname, String_val(Field(name,0)), sizeof(cname));
   }
-  else {
+  else
     CAMLassert(Int_val(name) == 0);
-    len = 0;
-  }
-  char cname[++len]; /* ++ for null byte */
-  memcpy(cname, String_val(Field(name,0)), len);
 
   mdbs_err_rel(mdb_dbi_open(
 	unhide(txn),

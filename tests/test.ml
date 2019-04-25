@@ -466,11 +466,11 @@ let test_stress =
 
 let test_regress =
   "regression tests",
-    [ "unnamed dbi", `Quick, begin fun () ->
-          Map.(open_existing Nodup ~key:Conv.string ~value:Conv.string) env
-          |> ignore
-        end
-    ]
+  [ "unnamed dbi", `Quick, begin fun () ->
+        Map.(open_existing Nodup ~key:Conv.string ~value:Conv.string) env
+        |> ignore
+      end
+  ]
 
 let () =
   run "Lmdb"
@@ -478,6 +478,7 @@ let () =
     ; test_nodup
     ; test_dup
     ; test_int
+    ; test_regress
     ; Pr.test
     ; test_stress
     ]
