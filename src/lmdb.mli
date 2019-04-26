@@ -17,13 +17,13 @@
     {{:http://www.lmdb.tech/doc/starting.html}LMDB documentation}, but called
     {e maps} in these OCaml bindings.
 
-    A single [('key, 'value, [< `Read | `Write])] {!type: Map.t} is a key-value store mapping
-    OCaml values of type ['key] to values of type ['value].
+    A single [('key, 'value, [< `Dup | `Uni ])] {!type: Map.t} is a key-value
+    store mapping OCaml values of type ['key] to values of type ['value].
     Multiple values per key are supported on request.
 
     Using {!Map}, we can open the unnamed map and add our first value:
 {[
-let map = Map.(open_existing nodup ~key:Conv.string ~value:Conv.string env) in
+let map = Map.open_existing ~key:Conv.string ~value:Conv.string env in
 Map.put map "Bactrian camel" "Elegant and beautiful animal with two humps."
 ]}
 
@@ -265,7 +265,7 @@ module Map : sig
   (** [create dup ~key ~value env]
       open (and possibly create) a map in the environment [env].
 
-      [dup] may be [dup] or [nodup], specifying whether the map supports
+      [dup] may be {!Dup} or {!Nodup}, specifying whether the map supports
       multiple values per key.
 
       Only a single transaction may call this function at a time.
