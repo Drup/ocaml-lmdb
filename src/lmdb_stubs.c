@@ -85,6 +85,21 @@ int constants[] = {
 value *exn_exists;
 value *exn_error;
 
+
+void mdbs_assert_func(MDB_env *env, const char *msg) {
+  const char *path;
+  mdb_env_get_path(env, &path);
+  char text[39 + strlen(path) + strlen(msg)];
+
+  strcpy(text, "Lmdb backend assertion failure in ");
+  strcat(text, path);
+  strcat(text, " at ");
+  strcat(text, msg);
+
+  caml_acquire_runtime_system();
+  caml_failwith(text);
+}
+
 CAMLprim value mdbs_init(value unit)
 {
   CAMLparam0();
@@ -137,7 +152,6 @@ void mdbs_err(int errn)
   }
 }
 
-#if 1
 #define mdbs_err_rel(ferr) \
   do { \
     int errn; \
@@ -146,9 +160,6 @@ void mdbs_err(int errn)
     caml_acquire_runtime_system(); \
     if (errn) mdbs_err(errn); \
   } while(0)
-#else
-#define mdbs_err_rel(ferr) mdbs_err(ferr)
-#endif
 
 inline value hide(void *p)
 {
@@ -164,7 +175,8 @@ inline void *unhide(value v)
 CAMLprim value mdbs_env_create(value unit)
 {
   MDB_env *env;
-  mdbs_err(mdb_env_create(&env));
+  mdbs_err_rel(mdb_env_create(&env));
+  mdb_env_set_assert(env, mdbs_assert_func);
 
   return hide(env);
 }
@@ -194,13 +206,13 @@ CAMLprim value mdbs_env_close(value env)
 
 #define set(name, type) \
 CAMLprim value mdbs_ ## name (value ctx, value x) { \
-  mdbs_err(mdb_ ## name (unhide(ctx), (type)Long_val(x))); \
+  mdbs_err_rel(mdb_ ## name (unhide(ctx), (type)Long_val(x))); \
   return Val_unit; }
 
 #define get(name, type) \
 CAMLprim value mdbs_ ## name (value ctx) { \
   type x; \
-  mdbs_err(mdb_ ## name (unhide(ctx), &x)); \
+  mdbs_err_rel(mdb_ ## name (unhide(ctx), &x)); \
   return Val_int(x); }
 
 set(env_set_mapsize, uintnat)
@@ -214,12 +226,15 @@ get(cursor_count, size_t)
 
 CAMLprim value mdbs_env_get_maxkeysize(value env)
 {
-  return Val_int(mdb_env_get_maxkeysize(unhide(env)));
+  caml_release_runtime_system();
+  int ret = Val_int(mdb_env_get_maxkeysize(unhide(env)));
+  caml_acquire_runtime_system();
+  return ret;
 }
 
 CAMLprim value mdbs_env_set_flags(value env, value flags, value onoff)
 {
-  mdbs_err(mdb_env_set_flags(
+  mdbs_err_rel(mdb_env_set_flags(
 	unhide(env),
 	Unsigned_long_val(flags),
 	Unsigned_long_val(onoff)));
@@ -229,7 +244,7 @@ CAMLprim value mdbs_env_set_flags(value env, value flags, value onoff)
 
 CAMLprim value mdbs_dbi_flags(value txn, value dbi) {
   unsigned flags;
-  mdbs_err(mdb_dbi_flags(
+  mdbs_err_rel(mdb_dbi_flags(
 	unhide(txn),
 	Unsigned_int_val(dbi),
 	&flags));
@@ -238,21 +253,26 @@ CAMLprim value mdbs_dbi_flags(value txn, value dbi) {
 
 int mdbs_msg_func(const char *msg, void *callback)
 {
-  return
-    Int_val(caml_callback(
-	  *(value *)callback,
-	  caml_copy_string(msg)));
+  int ret;
+  caml_acquire_runtime_system();
+  ret = Int_val(caml_callback(
+	*(value *)callback,
+	caml_copy_string(msg)));
+  caml_release_runtime_system();
+  return ret;
 }
 
 CAMLprim value mdbs_reader_list(value env, value callback)
 {
   CAMLparam1(callback);
 
+  caml_release_runtime_system();
   int ret =
     mdb_reader_list(
 	unhide(env),
 	&mdbs_msg_func,
 	&callback);
+  caml_acquire_runtime_system();
 
   if (ret < 0)
     mdbs_err(ret);
@@ -279,7 +299,7 @@ CAMLprim value mdbs_env_stat(value env)
 {
   MDB_stat cstat;
 
-  mdbs_err(mdb_env_stat(
+  mdbs_err_rel(mdb_env_stat(
 	unhide(env),
 	&cstat));
 
@@ -290,7 +310,7 @@ CAMLprim value mdbs_stat(value txn, value dbi)
 {
   MDB_stat cstat;
 
-  mdbs_err(mdb_stat(
+  mdbs_err_rel(mdb_stat(
 	unhide(txn),
 	Unsigned_int_val(dbi),
 	&cstat));
@@ -335,7 +355,7 @@ CAMLprim value mdbs_env_get_path(value env)
 {
   const char *path;
 
-  mdbs_err(mdb_env_get_path(unhide(env), &path));
+  mdbs_err_rel(mdb_env_get_path(unhide(env), &path));
 
   return caml_copy_string(path);
 }
@@ -344,7 +364,7 @@ CAMLprim value mdbs_env_get_fd(value env)
 {
   mdb_filehandle_t fd;
 
-  mdbs_err(mdb_env_get_fd(
+  mdbs_err_rel(mdb_env_get_fd(
 	unhide(env),
 	&fd));
 
@@ -364,7 +384,10 @@ CAMLprim value mdbs_env_sync(value env, value force)
 
 CAMLprim value mdbs_txn_env (value txn)
 {
-  MDB_env *env = mdb_txn_env(unhide(txn));
+  MDB_env *env;
+  caml_release_runtime_system();
+  env = mdb_txn_env(unhide(txn));
+  caml_acquire_runtime_system();
 
   if (env == NULL)
     caml_invalid_argument("Lmdb.Txn.env: invalid transaction handle.");
@@ -403,7 +426,7 @@ CAMLprim value mdbs_cursor_open (value txn, value dbi)
 {
   MDB_cursor *cursor;
 
-  mdbs_err(mdb_cursor_open(
+  mdbs_err_rel(mdb_cursor_open(
 	unhide(txn),
 	Unsigned_int_val(dbi),
 	&cursor));
@@ -419,7 +442,9 @@ CAMLprim value mdbs_txn_commit(value txn)
 
 CAMLprim value mdbs_cursor_close(value cursor)
 {
+  caml_release_runtime_system();
   mdb_cursor_close(unhide(cursor));
+  caml_acquire_runtime_system();
   return Val_unit;
 }
 
@@ -455,7 +480,9 @@ CAMLprim value mdbs_dbi_open(value txn, value name, value flags)
 
 CAMLprim value mdbs_dbi_close(value env, value dbi)
 {
+  caml_release_runtime_system();
   mdb_dbi_close(unhide(env), Unsigned_int_val(dbi));
+  caml_acquire_runtime_system();
   return Val_unit;
 }
 
@@ -620,29 +647,37 @@ CAMLprim value mdbs_cursor_put(value cursor, value key, value valopt, value flag
 CAMLprim value mdbs_cmp(value txn, value dbi, value key, value val)
 {
   MDB_val ckey, cval;
+  int ret;
 
   mvp_of_ba(&ckey, key);
   mvp_of_ba(&cval, val);
 
-  return
-    Val_int(mdb_cmp(
+  caml_release_runtime_system();
+  ret = Val_int(mdb_cmp(
 	  unhide(txn),
 	  Unsigned_int_val(dbi),
 	  &ckey,
 	  &cval));
+  caml_acquire_runtime_system();
+
+  return ret;
 }
 
 CAMLprim value mdbs_dcmp(value txn, value dbi, value key, value val)
 {
   MDB_val ckey, cval;
+  int ret;
 
   mvp_of_ba(&ckey, key);
   mvp_of_ba(&cval, val);
 
-  return
-    Val_int(mdb_dcmp(
+  caml_release_runtime_system();
+  ret = Val_int(mdb_dcmp(
 	  unhide(txn),
 	  Unsigned_int_val(dbi),
 	  &ckey,
 	  &cval));
+  caml_acquire_runtime_system();
+
+  return ret;
 }
