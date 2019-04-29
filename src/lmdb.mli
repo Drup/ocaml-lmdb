@@ -148,110 +148,111 @@ end
 
 end
 
+(** Converters to and from the internal representation of keys and values.
+    A converter contains serialising and deserialising functions as well as
+    the flags applied when the converter is used in a map.
+*)
+module Conv : sig
+  (** {2 Types } *)
+
+  type 'a t
+
+  type bigstring =
+    (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+  (** Bigstrings are used to transfer the raw serialised data into and out of
+      the database. They may point directly to a memory-mapped region of the
+      database file. *)
+
+  (** Flags describing the (sorting) properties of keys and values of a map.
+
+      See the LMDB documentation for the meaning of these flags.
+
+      You probably won't need those flags since the converters provided in
+      {!Conv} will already make appropriate use of these flags.
+  *)
+  module Flags = Lmdb_bindings.DbiFlags
+
+  (** {2 Constructor and accessors} *)
+
+  val make :
+    ?flags:Flags.t ->
+    serialise:((int -> bigstring) -> 'a -> bigstring) ->
+    deserialise:(bigstring -> 'a) ->
+    'a t
+  (** [make ~serialise ~deserialise]
+      creates a converter from a serialising and a deserialising function
+
+      @param serialise [serialise alloc x]
+        {e may} call [alloc len] {e once} to allocate a [bigstring] of size [len].
+        It then {e must} fill the serialised data of [x] into this [bigstring]
+        and return {e exactly this} bigstring. If [serialise] didn't call [alloc] it may
+        return any [bigstring].
+        [alloc] may return uninitialised memory. It is therefore recommended
+        that [serialise] overwrites all allocated memory to avoid leaking possibly
+        sensitive memory content into the database.
+
+        If [serialise] calls [alloc] the library may utilise the [MDB_RESERVE]
+        interface when appropriate to avoid calls to [malloc] and [memcpy].
+
+      @param deserialise
+        The passed {!bigstring} is only valid as long as the current transaction.
+        It is therefore strongly recommended not to leak it out of [deserialise].
+
+      @param flags Flags to be set on a map using this converter.
+
+        Depending on the use of a converter as {e key} or {e value}
+        {!Map.create} and {!Map.open_existing} will select the correct set of
+        flags: [_key] flags will be used for keys and [_dup] flags will be
+        used for values on maps supporting duplicates.
+
+  *)
+
+  val serialise : 'a t -> (int -> bigstring) -> 'a -> bigstring
+  val deserialise : 'a t -> bigstring -> 'a
+  val flags : _ t -> Flags.t
+
+  (** {2 Predefined converters } *)
+
+  (** {3 Strings } *)
+
+  val bigstring :bigstring t
+  (** The [bigstring] converter returns bigstrings as returned by the lmdb
+      backend. These bigstrings point into the environment memory-map and
+      are therefore only guaranteed to be valid until the transaction ends.
+      If you need longer-lived values then use the [string] converter, make a copy
+      or write a custom converter.
+  *)
+
+  val string :string t
+  (** The [string] converter simply copies the raw database content from / to
+      OCaml strings. *)
+
+
+  (** {3 Integers } *)
+
+  (** The integer converters will make use of {! Flags.t} as
+      appropriate so that integers are sorted in ascending order irrespective
+      of machine endianness.
+  *)
+
+  val int32_be        :Int32.t t
+  val int64_be        :Int64.t t
+  val int32_le        :Int32.t t
+  val int64_le        :Int64.t t
+
+  (** For convenience, the [_as_int] converters convert the internal integer
+      representation to and from [int].
+      @raise Invalid_argument [Invalid_argument "Lmdb: Integer out of bounds"]
+  *)
+
+  val int32_be_as_int :int t
+  val int64_be_as_int :int t
+  val int32_le_as_int :int t
+  val int64_le_as_int :int t
+end
+
 (** Key-value maps. *)
 module Map : sig
-  (** Converters to and from the internal representation of keys and values.
-      A converter contains serialising and deserialising functions as well as
-      the flags applied when the converter is used in a map.
-  *)
-  module Conv : sig
-    (** {2 Types } *)
-
-    type 'a t
-
-    type bigstring =
-      (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
-    (** Bigstrings are used to transfer the raw serialised data into and out of
-        the database. They may point directly to a memory-mapped region of the
-        database file. *)
-
-    (** Flags describing the (sorting) properties of keys and values of a map.
-
-        See the LMDB documentation for the meaning of these flags.
-
-        You probably won't need those flags since the converters provided in
-        {!Conv} will already make appropriate use of these flags.
-    *)
-    module Flags = Lmdb_bindings.DbiFlags
-
-    (** {2 Constructor and accessors} *)
-
-    val make :
-      ?flags:Flags.t ->
-      serialise:((int -> bigstring) -> 'a -> bigstring) ->
-      deserialise:(bigstring -> 'a) ->
-      'a t
-    (** [make ~serialise ~deserialise]
-        creates a converter from a serialising and a deserialising function
-
-        @param serialise [serialise alloc x]
-          {e may} call [alloc len] {e once} to allocate a [bigstring] of size [len].
-          It then {e must} fill the serialised data of [x] into this [bigstring]
-          and return {e exactly this} bigstring. If [serialise] didn't call [alloc] it may
-          return any [bigstring].
-          [alloc] may return uninitialised memory. It is therefore recommended
-          that [serialise] overwrites all allocated memory to avoid leaking possibly
-          sensitive memory content into the database.
-
-          If [serialise] calls [alloc] the library may utilise the [MDB_RESERVE]
-          interface when appropriate to avoid calls to [malloc] and [memcpy].
-
-        @param deserialise
-          The passed {!bigstring} is only valid as long as the current transaction.
-          It is therefore strongly recommended not to leak it out of [deserialise].
-
-        @param flags Flags to be set on a map using this converter.
-
-          Depending on the use of a converter as {e key} or {e value}
-          {!Map.create} and {!Map.open_existing} will select the correct set of
-          flags: [_key] flags will be used for keys and [_dup] flags will be
-          used for values on maps supporting duplicates.
-
-    *)
-
-    val serialise : 'a t -> (int -> bigstring) -> 'a -> bigstring
-    val deserialise : 'a t -> bigstring -> 'a
-    val flags : _ t -> Flags.t
-
-    (** {2 Predefined converters } *)
-
-    (** {3 Strings } *)
-
-    val bigstring :bigstring t
-    (** The [bigstring] converter returns bigstrings as returned by the lmdb
-        backend. These bigstrings point into the environment memory-map and
-        are therefore only guaranteed to be valid until the transaction ends.
-        If you need longer-lived values then use the [string] converter, make a copy
-        or write a custom converter.
-    *)
-
-    val string :string t
-    (** The [string] converter simply copies the raw database content from / to
-        OCaml strings. *)
-
-
-    (** {3 Integers } *)
-
-    (** The integer converters will make use of {! Flags.t} as
-        appropriate so that integers are sorted in ascending order irrespective
-        of machine endianness.
-    *)
-
-    val int32_be        :Int32.t t
-    val int64_be        :Int64.t t
-    val int32_le        :Int32.t t
-    val int64_le        :Int64.t t
-
-    (** For convenience, the [_as_int] converters convert the internal integer
-        representation to and from [int].
-        @raise Invalid_argument [Invalid_argument "Lmdb: Integer out of bounds"]
-    *)
-
-    val int32_be_as_int :int t
-    val int64_be_as_int :int t
-    val int32_le_as_int :int t
-    val int64_le_as_int :int t
-  end
 
   (** A handle for a map from keys of type ['key] to values of type ['value].
       The map may support only a single value per key ([[ `Dup ]])
