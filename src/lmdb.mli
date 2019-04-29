@@ -7,7 +7,7 @@
 
     First, an environment must be opened using {!Env.create}:
 
-    {[let env = Env.(create rw ~flags:Flags.no_subdir "mydb") ]}
+    {[let env = Env.(create Rw ~flags:Flags.no_subdir "mydb") ]}
 
     Now the data file [mydb] and lock file [mydb-lock] have been created
     in the current directory.
@@ -23,7 +23,7 @@
 
     Using {!Map}, we can open the unnamed map and add our first value:
 {[
-let map = Map.open_existing ~key:Conv.string ~value:Conv.string env in
+let map = Map.open_existing Nodup ~key:Conv.string ~value:Conv.string env in
 Map.put map "Bactrian camel" "Elegant and beautiful animal with two humps."
 ]}
 
@@ -39,9 +39,9 @@ module Mdb = Lmdb_bindings
 (** {2 Permissions} *)
 
 (** This library uses [[< `Read | `Write ]] phantom types to encode the
-    read/write permissions of environments, transactions, maps and
-    cursors. The following values are used to request read-only or read-write
-    permissions on environments, transactions and cursors.
+    read/write permissions of transactions and cursors. The following values
+    are used to request read-only or read-write permissions on environments,
+    transactions and cursors.
 *)
 type 'a perm =
   | Ro : [ `Read ] perm
@@ -107,7 +107,7 @@ module Txn : sig
   (** A transaction handle. A transaction may be read-only or read-write. *)
   type -'perm t constraint 'perm = [< `Read | `Write ]
 
-  (** [go perm env ?txn f]
+  (** [go perm env f]
       runs a transaction with [perm] read/write permissions in [env].
 
       The function [f txn] will receive the transaction handle. All changes to
@@ -142,18 +142,14 @@ end
   val abort : 'perm t -> 'b
 
   val env : 'perm t -> Env.t
-  (** [env txn] return the environment of [txn] *)
+  (** [env txn] returns the environment of [txn] *)
 
 end
 
 (** Converters to and from the internal representation of keys and values.
 
-    A converter is a module with Signature {!S} containing the serialising
-    {!Conv.S.write} and deserialising {!Conv.S.read} functions as well as
-    the {!Conv.S.flags} applied when the converter is used in a map.
-
-    For convenience every converter is is also exported as first-class value
-    so it can be easily passed to {!Map.create} and {!Map.open_existing}.
+    A converter contains the serialising and deserialising functions as well as
+    the flags applied when the converter is used in a map.
 *)
 module Conv : sig
   (** {2 Types } *)
@@ -170,8 +166,8 @@ module Conv : sig
 
       See the LMDB documentation for the meaning of these flags.
 
-      You probably won't need those flags since the converters provided in {!
-      Conv} will already make appropriate use of these flags.
+      You probably won't need those flags since the converters provided in
+      {!Conv} will already make appropriate use of these flags.
   *)
   module Flags = Lmdb_bindings.DbiFlags
 
@@ -186,20 +182,20 @@ module Conv : sig
       creates a converter from a serialising and a deserialising function
 
       @param serialise [serialise alloc x]
-        [serialise] {e may} call [alloc len] {e once} to allocate a [bigstring] of size [len].
+        {e may} call [alloc len] {e once} to allocate a [bigstring] of size [len].
         It then {e must} fill the serialised data of [x] into this [bigstring]
         and return {e exactly this} bigstring. If [serialise] didn't call [alloc] it may
         return any [bigstring].
         [alloc] may return uninitialised memory. It is therefore recommended
-        that [serialise] overwrites the all allocated memory to avoid leaking possibly
+        that [serialise] overwrites all allocated memory to avoid leaking possibly
         sensitive memory content into the database.
 
         If [serialise] calls [alloc] the library may utilise the [MDB_RESERVE]
         interface when appropriate to avoid calls to [malloc] and [memcpy].
 
-      @param deserialise [deserialise b]
-        The bigstring [b] is only valid as long as the current transaction.
-        It is therefore strongly recommended not to leak [b] out of [read].
+      @param deserialise
+        The passed {!bigstring} is only valid as long as the current transaction.
+        It is therefore strongly recommended not to leak it out of [deserialise].
 
       @param flags Flags to be set on a map using this converter.
 
@@ -222,11 +218,13 @@ module Conv : sig
   (** The [bigstring] converter returns bigstrings as returned by the lmdb
       backend. These bigstrings point into the environment memory-map and
       are therefore only guaranteed to be valid until the transaction ends.
-      If you need longer-lived values use the [string] converter, make a copy
+      If you need longer-lived values then use the [string] converter, make a copy
       or write a custom converter.
   *)
 
   val string :string t
+  (** The [string] converter simply copies the raw database content from / to
+      OCaml strings. *)
 
 
   (** {3 Integers } *)
@@ -241,9 +239,9 @@ module Conv : sig
   val int32_le        :Int32.t t
   val int64_le        :Int64.t t
 
-  (** For convenience the [_as_int] converters convert the internal integer
+  (** For convenience, the [_as_int] converters convert the internal integer
       representation to and from [int].
-      @raise Invalid_argument "Lmdb: Integer truncated"
+      @raise Invalid_argument [Invalid_argument "Lmdb: Integer out of bounds"]
   *)
 
   val int32_be_as_int :int t
@@ -254,7 +252,9 @@ end
 
 (** Key-value maps. *)
 module Map : sig
-  (** A handle for a map from keys of type ['key] to values of type ['value]. *)
+  (** A handle for a map from keys of type ['key] to values of type ['value].
+      The map may support only a single value per key ([[ `Dup ]])
+      or multiple values per key ([[ `Dup | `Uni ]]). *)
   type ('key, 'value, -'dup) t
     constraint 'dup = [< `Dup | `Uni ]
 

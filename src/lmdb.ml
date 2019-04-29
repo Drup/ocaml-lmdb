@@ -140,6 +140,8 @@ module Conv = struct
 
   let is_int_size n = n = Mdb.sizeof_int || n = Mdb.sizeof_size_t
 
+  let overflow = Invalid_argument "Lmdb: Integer out of bounds"
+
   let int32_be =
     { flags =
         if Sys.big_endian && is_int_size 4
@@ -180,7 +182,7 @@ module Conv = struct
           let ix = Int32.of_int i in
           if Int32.to_int ix = i
           then serialise alloc ix
-          else invalid_arg "Lmdb: Integer truncated"
+          else raise overflow
       end
     ; deserialise = begin
         if Sys.int_size >= 32
@@ -191,7 +193,7 @@ module Conv = struct
           let i = Int32.to_int ix in
           if Int32.of_int i = ix
           then i
-          else invalid_arg "Lmdb: Integer truncated"
+          else raise overflow
       end
     }
 
@@ -242,7 +244,7 @@ module Conv = struct
           let i = Int64.to_int ix in
           if Int64.of_int i = ix
           then i
-          else invalid_arg "Lmdb: Integer truncated"
+          else raise overflow
       end
     }
 
