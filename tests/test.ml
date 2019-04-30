@@ -386,6 +386,35 @@ let test_dup =
     end
   ]
 
+let test_int =
+  let make_test name conv =
+    name, `Quick,
+    begin fun () ->
+      let map =
+        Map.(create Dup
+           ~key:conv
+           ~value:conv
+           ~name) env
+      in
+      let rec loop n =
+        if n < 1073741823 then begin
+          (try Map.(put ~flags:Flags.append     map n n)
+           with Exists -> fail "Ordering on keys");
+          (try Map.(put ~flags:Flags.append_dup map 1 n)
+           with Exists -> fail "Ordering on values");
+          loop (n / 3 * 4);
+        end
+      in loop 12;
+      Map.drop ~delete:true map;
+    end
+  in
+  "Int",
+  [ make_test "int32_be" Conv.int32_be_as_int
+  ; make_test "int32_le" Conv.int32_le_as_int
+  ; make_test "int64_be" Conv.int64_be_as_int
+  ; make_test "int64_le" Conv.int64_le_as_int
+  ]
+
 let test_stress =
   "threaded GC stress",
   let stress duration () =
@@ -446,6 +475,7 @@ let test_regress =
 let () =
   run "Lmdb"
     [ "capabilities", [ "capabilities", `Quick, capabilities ]
+    ; test_int
     ; test_nodup
     ; test_dup
     ; test_regress
