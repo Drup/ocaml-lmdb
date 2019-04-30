@@ -440,8 +440,6 @@ module Map = struct
     Mdb.dcmp txn map.dbi xa ya
 
   let compare = compare_key
-
-  module Conv = Conv
 end
 
 module Cursor = struct
