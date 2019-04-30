@@ -148,8 +148,6 @@ end
 
 end
 
-(** Key-value maps. *)
-module Map : sig
   (** Converters to and from the internal representation of keys and values.
       A converter contains serialising and deserialising functions as well as
       the flags applied when the converter is used in a map.
@@ -253,6 +251,8 @@ module Map : sig
     val int64_le_as_int :int t
   end
 
+(** Key-value maps. *)
+module Map : sig
   (** A handle for a map from keys of type ['key] to values of type ['value].
       The map may support only a single value per key ([[ `Dup ]])
       or multiple values per key ([[ `Dup | `Uni ]]). *)
