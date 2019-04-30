@@ -332,6 +332,8 @@ module Map = struct
       key.flags * (reverse_key + integer_key) +
       match dup with
       | Nodup -> Conv.Flags.none
+      | Dup when name = None ->
+        invalid_arg "Lmdb.Map.create: The unnamed map does not support duplicates"
       | Dup ->
         dup_sort +
         value.flags * (dup_fixed + integer_dup + reverse_dup)

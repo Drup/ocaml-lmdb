@@ -470,6 +470,20 @@ let test_regress =
         Map.(open_existing Nodup ~key:Conv.string ~value:Conv.string) env
         |> ignore
       end
+  ; "dup unnamed dbi", `Quick, begin fun () ->
+      check_raises "no duplicates on unnamed map"
+        (Invalid_argument "Lmdb.Map.create: The unnamed map does not support duplicates")
+      @@ fun () ->
+      let unnamed_dup =
+        Map.(open_existing Dup ~key:Conv.string ~value:Conv.string) env
+      in
+      check bool "compare dups" true (Map.compare_val unnamed_dup "5" "1" > 0);
+      ignore @@ Cursor.go Rw unnamed_dup @@ fun cursor ->
+      Cursor.put cursor "dup_entry" "1";
+      Cursor.put cursor "dup_entry" "2";
+      check (pair string (array string)) "dup entries" ("dup entry", [|"1";"2"|])
+        (Cursor.current_all cursor);
+    end
   ]
 
 let () =
