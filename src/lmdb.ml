@@ -140,158 +140,158 @@ struct
       | Some x -> x
 end
 
-  module Conv = struct
-    type bigstring = Bigstring.t
+module Conv = struct
+  type bigstring = Bigstring.t
 
-    module Flags = Mdb.DbiFlags
+  module Flags = Mdb.DbiFlags
 
-    type 'a t = {
-      flags : Flags.t ;
-      serialise : (int -> Bigstring.t) -> 'a -> Bigstring.t ;
-      deserialise : Bigstring.t -> 'a ;
+  type 'a t = {
+    flags : Flags.t ;
+    serialise : (int -> Bigstring.t) -> 'a -> Bigstring.t ;
+    deserialise : Bigstring.t -> 'a ;
+  }
+
+  let make ?(flags=Flags.none) ~serialise ~deserialise =
+    { flags = flags
+    ; deserialise = deserialise
+    ; serialise = serialise }
+
+  let serialise { serialise; _ } = serialise
+  let deserialise { deserialise; _ } = deserialise
+  let flags { flags; _ } = flags
+
+  let is_int_size n = n = Mdb.sizeof_int || n = Mdb.sizeof_size_t
+
+  let overflow = Invalid_argument "Lmdb: Integer out of bounds"
+
+  let int32_be =
+    { flags =
+        if Sys.big_endian && is_int_size 4
+        then Flags.(integer_key + integer_dup + dup_fixed)
+        else Flags.(dup_fixed)
+    ; serialise = begin fun alloc x ->
+        let a = alloc 4 in
+        Bigstring.set_int32_be a 0 x;
+        a
+      end
+    ; deserialise = begin fun a ->
+        Bigstring.get_int32_be a 0
+      end
     }
 
-    let make ?(flags=Flags.none) ~serialise ~deserialise =
-      { flags = flags
-      ; deserialise = deserialise
-      ; serialise = serialise }
+  let int32_le =
+    { flags =
+        if not Sys.big_endian && is_int_size 4
+        then Flags.(integer_key + integer_dup + dup_fixed)
+        else Flags.(reverse_key + reverse_dup + dup_fixed)
+    ; serialise = begin fun alloc x ->
+        let a = alloc 4 in
+        Bigstring.set_int32_le a 0 x;
+        a
+      end
+    ; deserialise = begin fun a ->
+        Bigstring.get_int32_le a 0
+      end
+    }
 
-    let serialise { serialise; _ } = serialise
-    let deserialise { deserialise; _ } = deserialise
-    let flags { flags; _ } = flags
+  let int32_as_int { flags; deserialise; serialise } =
+    { flags
+    ; serialise = begin
+        if Sys.int_size <= 32
+        then fun alloc i ->
+          serialise alloc @@ Int32.of_int i
+        else fun alloc i ->
+          let ix = Int32.of_int i in
+          if Int32.to_int ix = i
+          then serialise alloc ix
+          else raise overflow
+      end
+    ; deserialise = begin
+        if Sys.int_size >= 32
+        then fun a ->
+          deserialise a |> Int32.to_int
+        else fun a ->
+          let ix = deserialise a in
+          let i = Int32.to_int ix in
+          if Int32.of_int i = ix
+          then i
+          else raise overflow
+      end
+    }
 
-    let is_int_size n = n = Mdb.sizeof_int || n = Mdb.sizeof_size_t
+  let int32_be_as_int = int32_as_int int32_be
+  let int32_le_as_int = int32_as_int int32_le
 
-    let overflow = Invalid_argument "Lmdb: Integer out of bounds"
+  let int64_be =
+    { flags =
+        if Sys.big_endian && is_int_size 8
+        then Flags.(integer_key + integer_dup + dup_fixed)
+        else Flags.(dup_fixed)
+    ; serialise = begin fun alloc x ->
+        let a = alloc 8 in
+        Bigstring.set_int64_be a 0 x;
+        a
+      end
+    ; deserialise = begin fun a ->
+        Bigstring.get_int64_be a 0
+      end
+    }
 
-    let int32_be =
-      { flags =
-          if Sys.big_endian && is_int_size 4
-          then Flags.(integer_key + integer_dup + dup_fixed)
-          else Flags.(dup_fixed)
-      ; serialise = begin fun alloc x ->
-          let a = alloc 4 in
-          Bigstring.set_int32_be a 0 x;
-          a
-        end
-      ; deserialise = begin fun a ->
-          Bigstring.get_int32_be a 0
-        end
-      }
+  let int64_le =
+    { flags =
+        if not Sys.big_endian && is_int_size 8
+        then Flags.(integer_key + integer_dup + dup_fixed)
+        else Flags.(reverse_key + reverse_dup + dup_fixed)
+    ; serialise = begin fun alloc x ->
+        let a = alloc 8 in
+        Bigstring.set_int64_le a 0 x;
+        a
+      end
+    ; deserialise = begin fun a ->
+        Bigstring.get_int64_le a 0
+      end
+    }
 
-    let int32_le =
-      { flags =
-          if not Sys.big_endian && is_int_size 4
-          then Flags.(integer_key + integer_dup + dup_fixed)
-          else Flags.(reverse_key + reverse_dup + dup_fixed)
-      ; serialise = begin fun alloc x ->
-          let a = alloc 4 in
-          Bigstring.set_int32_le a 0 x;
-          a
-        end
-      ; deserialise = begin fun a ->
-          Bigstring.get_int32_le a 0
-        end
-      }
+  let int64_as_int { flags; deserialise; serialise } =
+    { flags
+    ; serialise = begin fun alloc i ->
+        serialise alloc @@ Int64.of_int i
+      end
+    ; deserialise = begin
+        if Sys.int_size >= 64
+        then fun a ->
+          deserialise a |> Int64.to_int
+        else fun a ->
+          let ix = deserialise a in
+          let i = Int64.to_int ix in
+          if Int64.of_int i = ix
+          then i
+          else raise overflow
+      end
+    }
 
-    let int32_as_int { flags; deserialise; serialise } =
-      { flags
-      ; serialise = begin
-          if Sys.int_size <= 32
-          then fun alloc i ->
-            serialise alloc @@ Int32.of_int i
-          else fun alloc i ->
-            let ix = Int32.of_int i in
-            if Int32.to_int ix = i
-            then serialise alloc ix
-            else raise overflow
-        end
-      ; deserialise = begin
-          if Sys.int_size >= 32
-          then fun a ->
-            deserialise a |> Int32.to_int
-          else fun a ->
-            let ix = deserialise a in
-            let i = Int32.to_int ix in
-            if Int32.of_int i = ix
-            then i
-            else raise overflow
-        end
-      }
+  let int64_be_as_int = int64_as_int int64_be
+  let int64_le_as_int = int64_as_int int64_le
 
-    let int32_be_as_int = int32_as_int int32_be
-    let int32_le_as_int = int32_as_int int32_le
+  let string =
+    { flags = Flags.none
+    ; serialise = begin fun alloc s ->
+        let len = String.length s in
+        let a = alloc len in
+        Bigstring.blit_from_string s ~src_off:0 a ~dst_off:0 ~len;
+        a
+      end
+    ; deserialise = begin fun a ->
+        Bigstring.substring a ~off:0 ~len:(Bigstring.length a)
+      end
+    }
 
-    let int64_be =
-      { flags =
-          if Sys.big_endian && is_int_size 8
-          then Flags.(integer_key + integer_dup + dup_fixed)
-          else Flags.(dup_fixed)
-      ; serialise = begin fun alloc x ->
-          let a = alloc 8 in
-          Bigstring.set_int64_be a 0 x;
-          a
-        end
-      ; deserialise = begin fun a ->
-          Bigstring.get_int64_be a 0
-        end
-      }
-
-    let int64_le =
-      { flags =
-          if not Sys.big_endian && is_int_size 8
-          then Flags.(integer_key + integer_dup + dup_fixed)
-          else Flags.(reverse_key + reverse_dup + dup_fixed)
-      ; serialise = begin fun alloc x ->
-          let a = alloc 8 in
-          Bigstring.set_int64_le a 0 x;
-          a
-        end
-      ; deserialise = begin fun a ->
-          Bigstring.get_int64_le a 0
-        end
-      }
-
-    let int64_as_int { flags; deserialise; serialise } =
-      { flags
-      ; serialise = begin fun alloc i ->
-          serialise alloc @@ Int64.of_int i
-        end
-      ; deserialise = begin
-          if Sys.int_size >= 64
-          then fun a ->
-            deserialise a |> Int64.to_int
-          else fun a ->
-            let ix = deserialise a in
-            let i = Int64.to_int ix in
-            if Int64.of_int i = ix
-            then i
-            else raise overflow
-        end
-      }
-
-    let int64_be_as_int = int64_as_int int64_be
-    let int64_le_as_int = int64_as_int int64_le
-
-    let string =
-      { flags = Flags.none
-      ; serialise = begin fun alloc s ->
-          let len = String.length s in
-          let a = alloc len in
-          Bigstring.blit_from_string s ~src_off:0 a ~dst_off:0 ~len;
-          a
-        end
-      ; deserialise = begin fun a ->
-          Bigstring.substring a ~off:0 ~len:(Bigstring.length a)
-        end
-      }
-
-    let bigstring =
-      { flags = Flags.none
-      ; serialise = (fun _ b -> b)
-      ; deserialise = (fun b -> b)
-      }
-  end
+  let bigstring =
+    { flags = Flags.none
+    ; serialise = (fun _ b -> b)
+    ; deserialise = (fun b -> b)
+    }
+end
 
 module Map = struct
   type ('k, 'v, -'perm, -'dup) t =
