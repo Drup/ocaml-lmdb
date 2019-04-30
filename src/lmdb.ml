@@ -140,7 +140,6 @@ struct
       | Some x -> x
 end
 
-module Map = struct
   module Conv = struct
     type bigstring = Bigstring.t
 
@@ -294,6 +293,7 @@ module Map = struct
       }
   end
 
+module Map = struct
   type ('k, 'v, -'perm, -'dup) t =
     { env               :'perm Env.t
     ; mutable dbi       :Mdb.dbi
@@ -440,6 +440,8 @@ module Map = struct
     Mdb.dcmp txn map.dbi xa ya
 
   let compare = compare_key
+
+  module Conv = Conv
 end
 
 module Cursor = struct
