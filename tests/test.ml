@@ -493,6 +493,6 @@ let () =
     ; test_dup
     ; test_int
     ; test_regress
-    ; Pr.test
+    ; Pr.test env
     ; test_stress
     ]
