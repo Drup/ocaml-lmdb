@@ -161,12 +161,12 @@ void mdbs_err(int errn)
     if (errn) mdbs_err(errn); \
   } while(0)
 
-inline value hide(void *p)
+static inline value hide(void *p)
 {
   CAMLassert(((intnat)p & 1) == 0);
   return ((intnat)p | 1);
 }
-inline void *unhide(value v)
+static inline void *unhide(value v)
 {
   CAMLassert(((intnat)v & 1) == 1);
   return ((void *)((v) & ~1));
@@ -496,7 +496,7 @@ CAMLprim value mdbs_drop(value txn, value dbi, value del)
   return Val_unit;
 }
 
-inline void mvp_of_ba(MDB_val *mvp, value ba)
+static inline void mvp_of_ba(MDB_val *mvp, value ba)
 {
   struct caml_ba_array *cba = Caml_ba_array_val(ba);
   CAMLassert(cba->num_dims == 1);
@@ -504,7 +504,7 @@ inline void mvp_of_ba(MDB_val *mvp, value ba)
   mvp->mv_data = cba->data;
 }
 
-inline void mvp_of_ba_opt(MDB_val *mvp, value opt)
+static inline void mvp_of_ba_opt(MDB_val *mvp, value opt)
 {
   if (Is_block(opt)) {
     CAMLassert(Tag_val(opt) == Custom_tag);
@@ -516,7 +516,7 @@ inline void mvp_of_ba_opt(MDB_val *mvp, value opt)
   }
 }
 
-inline value ba_of_mvp(MDB_val *mvp)
+static inline value ba_of_mvp(MDB_val *mvp)
 {
   return
     caml_ba_alloc(
