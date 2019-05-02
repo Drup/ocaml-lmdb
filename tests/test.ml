@@ -475,10 +475,10 @@ let test_regress =
 let () =
   run "Lmdb"
     [ "capabilities", [ "capabilities", `Quick, capabilities ]
-    (*; test_nodup
-    ; test_dup*)
+    ; test_nodup
+    (*; test_dup*)
     ; test_int
     ; test_regress
-    (*; Pr.test*)
+    ; Pr.test
     ; test_stress
     ]
