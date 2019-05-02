@@ -191,6 +191,7 @@ let test_dup =
         end
       in loop 12;
     end
+(*
   ; "fold_left", `Quick, begin fun () ->
       Cursor.fold_left (12, 12) map
         ~f:begin fun (n,m) key value ->
@@ -222,7 +223,7 @@ let test_dup =
         end;
       check_kv "last_kv" (805306368,805306368) !kv
     end
-(*
+*)
   ; "fold_left_all", `Quick, begin fun () ->
       Cursor.fold_left_all 12 map
         ~f:begin fun n key values ->
@@ -269,7 +270,6 @@ let test_dup =
         end;
       check int "last_key" 805306368 !n
     end
-*)
   ; "first", `Quick, begin fun () ->
       ignore @@ Cursor.go Rw map ?txn:None @@ fun cursor ->
       Cursor.first cursor |> check_kv "first 12" (12, 12)
