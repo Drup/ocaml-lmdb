@@ -478,7 +478,7 @@ let () =
     (*; test_nodup
     ; test_dup*)
     ; test_int
-    (*; test_regress
-    ; Pr.test
-    ; test_stress*)
+    ; test_regress
+    (*; Pr.test*)
+    ; test_stress
     ]
