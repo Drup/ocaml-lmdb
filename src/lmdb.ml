@@ -775,6 +775,22 @@ module Cursor = struct
     let f acc key values = f key values acc in
     fold_prim_all last prev_nodup get_values_from_last ?cursor ~f acc map
 
+  let iter_prim_all init step get_all ?cursor ~f map =
+    trivial Ro ?cursor map @@ fun cursor ->
+    match init cursor with
+    | exception Not_found -> ()
+    | key, first ->
+      let values = get_all cursor first in
+      f key values;
+      let rec loop () =
+        match step cursor with
+        | exception Not_found -> ()
+        | key, first ->
+          let values = get_all cursor first in
+          f key values;
+          loop ()
+      in loop ()
+
   let iter_all ?cursor ~f map =
-    fold_left_all ?cursor () map ~f:(fun () -> f)
+    iter_prim_all first next_nodup get_values_from_first ?cursor ~f map
 end
