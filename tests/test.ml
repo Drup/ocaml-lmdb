@@ -90,7 +90,6 @@ let test_nodup =
         end
       |> check int "last_key" 6
     end
-(*
   ; "iter", `Quick, begin fun () ->
       let n = ref 12 in
       Cursor.iter map
@@ -101,7 +100,6 @@ let test_nodup =
         end;
       check int "last_kv" 805306368 !n
     end
-*)
   ; "put first", `Quick, begin fun () ->
       ignore @@ Cursor.go Rw map ?txn:None @@ fun cursor ->
       for i=0 to 9 do Cursor.put cursor i i done
