@@ -75,8 +75,10 @@ let test_nodup =
   ; "fold_left", `Quick, begin fun () ->
       Cursor.fold_left 12 map
         ~f:begin fun n key value ->
-          check int "key" n key;
-          check int "values" n value;
+          if n <> key then
+            check int "key" n key;
+          if n <> value then
+            check int "values" n value;
           (n * 2)
         end
       |> check int "last_key" 805306368
@@ -84,8 +86,10 @@ let test_nodup =
   ; "fold_right", `Quick, begin fun () ->
       Cursor.fold_right map 402653184
         ~f:begin fun key value n ->
-          check int "key" n key;
-          check int "values" n value;
+          if n <> key then
+            check int "key" n key;
+          if n <> value then
+            check int "values" n value;
           (n / 2)
         end
       |> check int "last_key" 6
@@ -94,8 +98,10 @@ let test_nodup =
       let n = ref 12 in
       Cursor.iter map
         ~f:begin fun key value ->
-          check int "key" !n key;
-          check int "values" !n value;
+          if !n <> key then
+            check int "key" !n key;
+          if !n <> value then
+            check int "values" !n value;
           n := value * 2;
         end;
       check int "last_kv" 805306368 !n
@@ -194,7 +200,8 @@ let test_dup =
   ; "fold_left", `Quick, begin fun () ->
       Cursor.fold_left (12, 12) map
         ~f:begin fun (n,m) key value ->
-          check_kv "kv pair" (n,m) (key,value);
+          if (n,m) <> (key,value) then
+            check_kv "kv pair" (n,m) (key,value);
           if m*2 <= 536870912
           then (n, m * 2)
           else (n * 2, n * 2)
@@ -204,7 +211,8 @@ let test_dup =
   ; "fold_right", `Quick, begin fun () ->
       Cursor.fold_right map (402653184, 402653184)
         ~f:begin fun  key value (n,m) ->
-          check_kv "kv pair" (n,m) (key,value);
+          if (n,m) <> (key,value) then
+            check_kv "kv pair" (n,m) (key,value);
           if m > n
           then (n, m / 2)
           else (n / 2, 402653184)
@@ -215,7 +223,8 @@ let test_dup =
       let kv = ref (12,12) in
       Cursor.iter map
         ~f:begin fun key value ->
-          check_kv "kv pair" !kv (key,value);
+          if !kv <> (key,value) then
+            check_kv "kv pair" !kv (key,value);
           if value*2 <= 536870912
           then kv := (key, value * 2)
           else kv := (key * 2, key * 2)
@@ -228,7 +237,8 @@ let test_dup =
           check int "key" n key;
           let rec loop_dup i m =
             if m <= 536870912 then begin
-              check int "dup" m values.(i);
+              if m <> values.(i) then
+                check int "dup" m values.(i);
               loop_dup (i+1) (m * 2);
             end
             else check int "no extra dups" i (Array.length values)
@@ -243,7 +253,8 @@ let test_dup =
           check int "key" n key;
           let rec loop_dup i m =
             if m <= 536870912 then begin
-              check int "dup" m values.(i);
+              if m <> values.(i) then
+                check int "dup" m values.(i);
               loop_dup (i+1) (m * 2);
             end
             else check int "no extra dups" i (Array.length values)
@@ -259,7 +270,8 @@ let test_dup =
           check int "key" !n key;
           let rec loop_dup i m =
             if m <= 536870912 then begin
-              check int "dup" m values.(i);
+              if m <> values.(i) then
+                check int "dup" m values.(i);
               loop_dup (i+1) (m * 2);
             end
             else check int "no extra dups" i (Array.length values)
