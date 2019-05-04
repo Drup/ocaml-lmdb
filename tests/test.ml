@@ -73,32 +73,38 @@ let test_nodup =
     in loop 12;
     end
   ; "fold_left", `Quick, begin fun () ->
+      let err = ref 0 in
       Cursor.fold_left 12 map
         ~f:begin fun n key value ->
-          check int "key" n key;
-          check int "values" n value;
+          if n <> key then incr err;
+          if n <> value then incr err;
           (n * 2)
         end
-      |> check int "last_key" 805306368
+      |> check int "last_key" 805306368;
+      check int "errors" 0 !err;
     end
   ; "fold_right", `Quick, begin fun () ->
+      let err = ref 0 in
       Cursor.fold_right map 402653184
         ~f:begin fun key value n ->
-          check int "key" n key;
-          check int "values" n value;
+          if n <> key then incr err;
+          if n <> value then incr err;
           (n / 2)
         end
-      |> check int "last_key" 6
+      |> check int "last_key" 6;
+      check int "errors" 0 !err;
     end
   ; "iter", `Quick, begin fun () ->
       let n = ref 12 in
+      let err = ref 0 in
       Cursor.iter map
         ~f:begin fun key value ->
-          check int "key" !n key;
-          check int "values" !n value;
+          if !n <> key then incr err;
+          if !n <> value then incr err;
           n := value * 2;
         end;
-      check int "last_kv" 805306368 !n
+      check int "last_kv" 805306368 !n;
+      check int "errors" 0 !err;
     end
   ; "put first", `Quick, begin fun () ->
       ignore @@ Cursor.go Rw map ?txn:None @@ fun cursor ->
