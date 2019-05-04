@@ -415,6 +415,12 @@ end
     ('key, 'value, 'perm, 'dup) Map.t ->
     unit
 
+  val iter_rev :
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    f:('key -> 'value -> unit) ->
+    ('key, 'value, 'perm, 'dup) Map.t ->
+    unit
+
   val fold_left :
     ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
     f:('a -> 'key -> 'value -> 'a) -> 'a ->
@@ -430,6 +436,12 @@ end
   (** Call [f] once for each key passing the key and {e all} associated values. *)
 
   val iter_all :
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    f:('key -> 'value array -> unit) ->
+    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
+    unit
+
+  val iter_rev_all :
     ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
     f:('key -> 'value array -> unit) ->
     ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
