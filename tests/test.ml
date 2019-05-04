@@ -409,10 +409,10 @@ let test_int =
     end
   in
   "Int",
-  [ make_test "int32_be" Map.Conv.int32_be_as_int
-  ; make_test "int32_le" Map.Conv.int32_le_as_int
-  ; make_test "int64_be" Map.Conv.int64_be_as_int
-  ; make_test "int64_le" Map.Conv.int64_le_as_int
+  [ make_test "int32_be" Conv.int32_be_as_int
+  ; make_test "int32_le" Conv.int32_le_as_int
+  ; make_test "int64_be" Conv.int64_be_as_int
+  ; make_test "int64_le" Conv.int64_le_as_int
   ]
 
 let test_stress =

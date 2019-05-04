@@ -11,7 +11,7 @@ let benchmark repeat =
   let errors = ref 0 in
 
   let bench name conv_key conv_val key value n =
-    let map = Map.(create nodup ~key:conv_key ~value:conv_val) env ~name in
+    let map = Map.(create Nodup ~key:conv_key ~value:conv_val) env ~name in
     let bench map cycles =
       let open Map in
       for i=0 to cycles-1 do
@@ -31,11 +31,11 @@ let benchmark repeat =
   let samples =
     let n = 500 in
     throughputN ~repeat 1
-      [ bench "string"   Map.Conv.string   Map.Conv.string string_of_int string_of_int n
-      ; bench "int32_be" Map.Conv.int32_be Map.Conv.string Int32.of_int string_of_int n
-      ; bench "int32_le" Map.Conv.int32_le Map.Conv.string Int32.of_int string_of_int n
-      ; bench "int64_be" Map.Conv.int64_be Map.Conv.string Int64.of_int string_of_int n
-      ; bench "int64_le" Map.Conv.int64_le Map.Conv.string Int64.of_int string_of_int n
+      [ bench "string"   Conv.string   Conv.string string_of_int string_of_int n
+      ; bench "int32_be" Conv.int32_be Conv.string Int32.of_int string_of_int n
+      ; bench "int32_le" Conv.int32_le Conv.string Int32.of_int string_of_int n
+      ; bench "int64_be" Conv.int64_be Conv.string Int64.of_int string_of_int n
+      ; bench "int64_le" Conv.int64_le Conv.string Int64.of_int string_of_int n
       ]
   in
   tabulate samples;

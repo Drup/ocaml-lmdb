@@ -140,7 +140,6 @@ struct
       | Some x -> x
 end
 
-module Map = struct
   module Conv = struct
     type bigstring = Bigstring.t
 
@@ -294,6 +293,7 @@ module Map = struct
       }
   end
 
+module Map = struct
   type ('k, 'v, -'perm, -'dup) t =
     { env               :'perm Env.t
     ; mutable dbi       :Mdb.dbi
@@ -579,7 +579,7 @@ module Cursor = struct
 
   let get_values_multiple cursor len =
     let value = cursor.map.value in
-    assert Map.Conv.Flags.(test dup_fixed cursor.map.flags);
+    assert Conv.Flags.(test dup_fixed cursor.map.flags);
     let _, first = cursor_none cursor Ops.first_dup in
     let size = Bigstring.length first in
     let values = Array.make len (Obj.magic ()) in
@@ -610,11 +610,11 @@ module Cursor = struct
 
 
   let get_values_from_first cursor first =
-    if not Map.Conv.Flags.(test dup_sort cursor.map.flags)
+    if not Conv.Flags.(test dup_sort cursor.map.flags)
     then [| first |]
     else begin
       let len = Mdb.cursor_count cursor.cursor in
-      if len > 1 && Map.Conv.Flags.(test (dup_sort + dup_fixed) cursor.map.flags)
+      if len > 1 && Conv.Flags.(test (dup_sort + dup_fixed) cursor.map.flags)
       then get_values_multiple cursor len
       else begin
         let values = Array.make len first in
@@ -626,11 +626,11 @@ module Cursor = struct
     end
 
   let get_values_from_last cursor last =
-    if not Map.Conv.Flags.(test dup_sort cursor.map.flags)
+    if not Conv.Flags.(test dup_sort cursor.map.flags)
     then [| last |]
     else begin
       let len = Mdb.cursor_count cursor.cursor in
-      if len > 1 && Map.Conv.Flags.(test (dup_sort + dup_fixed) cursor.map.flags)
+      if len > 1 && Conv.Flags.(test (dup_sort + dup_fixed) cursor.map.flags)
       then begin
         let values = get_values_multiple cursor len in
         cursor_none cursor Ops.first_dup |> ignore;
@@ -668,7 +668,7 @@ module Cursor = struct
 
   let put_raw_key { cursor ; map } ~flags ka v =
     let value = map.value in
-    if Map.Conv.Flags.(test dup_sort map.flags)
+    if Conv.Flags.(test dup_sort map.flags)
     then begin
       let va = value.serialise Bigstring.create v in
       Mdb.cursor_put cursor ka va flags
