@@ -177,7 +177,7 @@ module Conv : sig
   val make :
     ?flags:Flags.t ->
     serialise:((int -> bigstring) -> 'a -> bigstring) ->
-    deserialise:(bigstring -> 'a) ->
+    deserialise:(bigstring -> 'a) -> unit ->
     'a t
   (** [make ~serialise ~deserialise]
       creates a converter from a serialising and a deserialising function

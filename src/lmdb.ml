@@ -151,7 +151,7 @@ module Conv = struct
     deserialise : Bigstring.t -> 'a ;
   }
 
-  let make ?(flags=Flags.none) ~serialise ~deserialise =
+  let make ?(flags=Flags.none) ~serialise ~deserialise () =
     { flags = flags
     ; deserialise = deserialise
     ; serialise = serialise }
