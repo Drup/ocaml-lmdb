@@ -16,7 +16,7 @@ let test env =
         put_count t count ;
         assert ((Map.stats t).entries = count) ;
         (* Iterate using cursor and print keys *)
-        ignore @@ Lmdb.Cursor.go Ro (t :> (_, _, [ `Read ], _) Map.t) (fun cur ->
+        ignore @@ Lmdb.Cursor.go Ro (t :> (_, _, [ `Read ], _) Map.t) (fun _ cur ->
             (* Triggering GC here also SEGFAULTs *)
             Gc.full_major () ;
             let rec print_keys = function

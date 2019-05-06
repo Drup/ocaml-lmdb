@@ -88,10 +88,7 @@ sig
     'perm perm ->
     ?txn:'perm t ->
     'perm Env.t ->
-    ('perm t -> 'a) -> 'a option
-
-
-  val abort : _ t -> 'b
+    (('a -> 'a) -> 'perm t -> 'a) -> 'a
 
   val env : 'perm t -> 'perm Env.t
 
@@ -106,25 +103,27 @@ end
 struct
   type -'perm t = Mdb.txn constraint 'perm = [< `Read | `Write ]
 
-  exception Abort of Obj.t
+  (* XXX: The Obj type magic wouldn't be necessary with OCaml 4.04 local exceptions *)
+  exception Abort of (Obj.t * Obj.t)
 
   let env = Mdb.txn_env
 
-  let abort txn = raise (Abort (Obj.repr txn))
-  let go (type p) (perm : p perm) ?txn:parent env f =
+  let go (type p r) (perm : p perm) ?txn:parent env f =
     let flags =
       match perm with
       | Rw -> Env.Flags.none
       | Ro -> Env.Flags.read_only
     in
     let txn = Mdb.txn_begin env parent flags in
-    try
-      let x = f txn in
-      Mdb.txn_commit txn ; Some x
-    with
-      | Abort t when t == Obj.repr txn || parent = None ->
-        Mdb.txn_abort txn ; None
-      | exn -> Mdb.txn_abort txn ; raise exn
+    let abort (r :r) = raise (Abort (Obj.repr txn, Obj.repr r)) in
+    match f abort txn with
+    | x ->
+      Mdb.txn_commit txn;
+      (x :r)
+    | exception Abort (t,r) when t == Obj.repr txn ->
+        Mdb.txn_abort txn;
+        (Obj.obj r :r)
+    | exception exn -> Mdb.txn_abort txn ; raise exn
 
   (* Used internally for trivial functions, not exported. *)
   let trivial perm ?txn e f =
@@ -135,9 +134,7 @@ struct
       then invalid_arg "Lmdb: transaction from wrong environment."
       else f txn
     | None ->
-      match go perm e f with
-      | None -> assert false
-      | Some x -> x
+      go perm e (fun _abort txn -> f txn)
 end
 
 module Conv = struct
@@ -456,42 +453,39 @@ module Cursor = struct
     constraint 'perm = [< `Read | `Write ]
     constraint 'dup = [< `Dup | `Uni ]
 
-  exception Abort of Obj.t
-
-  let go perm ?txn (map :_ Map.t) f =
-    Txn.trivial perm map.env ?txn @@ fun t ->
-    let cursor =
-      { cursor = Mdb.cursor_open t map.dbi
-      ; map = map }
+  let go (type r) perm ?txn (map :_ Map.t) f :r =
+    let run (abort :r -> r) txn =
+      let cursor =
+        { cursor = Mdb.cursor_open txn map.dbi
+        ; map = map }
+      in
+      match f abort cursor with
+      | res ->
+        Mdb.cursor_close cursor.cursor;
+        res
+      | exception exn ->
+        Mdb.cursor_close cursor.cursor;
+        raise exn
     in
-    try
-      let res = f cursor in
-      Mdb.cursor_close cursor.cursor;
-      Some res
-    with
-    | Abort c when c == Obj.repr cursor ->
-      Mdb.cursor_close cursor.cursor;
-      if txn = None
-      then (Mdb.txn_abort t; None)
-      else invalid_arg "Lmdb.Cursor.abort: won't abort enclosing transaction."
-    | exn ->
-      Mdb.cursor_close cursor.cursor;
-      raise exn
-
-  let abort cursor = raise (Abort (Obj.repr cursor))
+    match txn with
+    | None -> Txn.go perm map.env run
+    | Some txn ->
+      let abort _ =
+        invalid_arg "Lmdb.Cursor.abort: won't abort enclosing transaction.";
+      in
+      run abort txn
+  ;;
 
   (* Used internally for trivial functions, not exported. *)
   let trivial perm ?cursor (map :_ Map.t) f =
-    match (cursor :_ t option) with
+    match cursor with
     | Some cursor ->
       if cursor.map != map
       then invalid_arg
           "Lmdb.Cursor.fold: Got cursor for wrong map";
       f cursor
     | None ->
-      match go perm map f with
-      | None -> assert false
-      | Some x -> x
+      go perm map (fun _abort cursor -> f cursor)
 
   let seek { cursor ; map } k =
     let key = map.key and value = map.value in

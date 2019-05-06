@@ -112,19 +112,22 @@ module Txn : sig
   (** [go perm env f]
       runs a transaction with [perm] read/write permissions in [env].
 
-      The function [f txn] will receive the transaction handle. All changes to
-      the environment [env] done using the transaction handle will be persisted
-      to the environment only when [f] returns. After [f] returned, the
-      transaction handle is invalid and should therefore not be leaked outside
-      [f].
+      The function [f abort txn] will receive the transaction handle. All
+      changes to the environment [env] done using the transaction handle will
+      be persisted to the environment only when [f] returns. After [f]
+      returned, the transaction handle is invalid and should therefore not be
+      leaked outside [f].
+      The [abort x] function may be called to abort the transaction discarding
+      all changes done in the transaction and return [x] from the [go]
+      function.
 
-      @return [None] if the transaction was aborted with [abort], and [Some _] otherwise.
+      @return the result of [f] or [x] when [abort x] has been called.
       @param txn Create a child transaction to [txn].
       This is not supported on an [env] with {!Env.Flags.write_map}.
 
       Here is an example incrementing a value atomically:
 {[
-go rw env begin fun txn ->
+go rw env begin fun _ txn ->
   let v = Map.get ~txn k in
   Map.put ~txn k (v+1) ;
   v
@@ -135,17 +138,10 @@ end
     'perm perm ->
     ?txn:'perm t ->
     'perm Env.t ->
-    ('perm t -> 'a) -> 'a option
-
-
-  (** [abort txn] aborts transaction [txn] and the current [go] function,
-      which will return [None].
-  *)
-  val abort : 'perm t -> 'b
+    (('a -> 'a) -> 'perm t -> 'a) -> 'a
 
   val env : 'perm t -> 'perm Env.t
   (** [env txn] returns the environment of [txn] *)
-
 end
 
 (** Converters to and from the internal representation of keys and values.
@@ -370,39 +366,36 @@ module Cursor : sig
     constraint 'perm = [< `Read | `Write ]
     constraint 'dup = [< `Dup | `Uni ]
 
-  (** [go perm map ?txn f] makes a cursor in the transaction [txn] using the
-      function [f cursor].
+  (** [go perm map ?txn f] creates a cursor in the transaction [txn] for use in
+      the function [f abort cursor].
 
       The function [f] will receive the [cursor].
-      A cursor can only be created and used inside a transaction.
-      The cursor inherits the permissions of the transaction.
       The cursor should not be leaked outside of [f].
+      The [abort x] function may be called to close the cursor and abort the
+      underlying transaction discarding all changes done by the cursor and
+      return [x] from the [go] function.
+      The abort function may not be used when a custom transaction [txn] has
+      been provided. Use the abort function of the transaction in this case.
 
       Here is an example that returns the first 5 elements of a [map]:
       {[
-go ro map begin fun c ->
+go Ro map @@ fun _ c ->
 let h = first c in
 let rec aux i =
   if i < 5 then next c :: aux (i+1)
   else []
 in
 h :: aux 1
-end
       ]}
 
       @param txn if omitted a transient transaction will implicitely be
       created before calling [f] and be committed after [f] returns.
-      Such a transient transaction may be aborted using {! abort}.
-  *)
-  val go : 'perm perm -> ?txn:'perm Txn.t -> ('key, 'value, 'perm, 'dup) Map.t ->
-    (('key, 'value, 'perm, 'dup) t -> 'a) -> 'a option
-
-  (** [abort cursor] aborts [cursor] and the current [go] function,
-      which will return [None].
-      @raise Invalid_argument if a transaction [~txn] was passed to the [go]
+      This transient transaction may be aborted using the provided [abort]
       function.
   *)
-  val abort : _ t -> unit
+  val go : 'perm perm -> ?txn:'perm Txn.t -> ('key, 'value, 'perm, 'dup) Map.t ->
+    (('a -> 'a) -> ('key, 'value, 'perm, 'dup) t -> 'a) -> 'a
+
 
   (** {2 Iterators} *)
 
