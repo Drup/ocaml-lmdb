@@ -63,7 +63,15 @@ let test_nodup =
            ~value:Conv.int32_be_as_int
            ~name:"Map") env
   in
-  [ "append", `Quick, begin fun () ->
+  [ "abort transaction", `Quick, begin fun () ->
+      Txn.go Rw env begin fun abort txn ->
+        Map.put ~txn map 13 13;
+        abort ();
+      end;
+      check_raises "expecting Not_found" Not_found
+        (fun () -> Map.get map 13 |> ignore);
+    end
+  ; "append", `Quick, begin fun () ->
     Map.drop map;
     let rec loop n =
       if n <= 536870912 then begin
