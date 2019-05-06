@@ -339,7 +339,7 @@ module Map = struct
         value.flags * (dup_fixed + integer_dup + reverse_dup)
     in
     let dbi, flags =
-      Txn.trivial perm ?txn (Obj.magic env) @@ fun txn ->
+      Txn.trivial perm ?txn env @@ fun txn ->
       let dbi = Mdb.dbi_open txn name flags in
       let flags' = Mdb.dbi_flags txn dbi in
       if not Conv.Flags.(eq (unset create flags) flags')
