@@ -404,61 +404,6 @@ end
   *)
   val abort : _ t -> unit
 
-  (** {2 Iterators} *)
-
-  (** Call [f] once for each key-value pair.
-      Will call [f] multiple times with the same key for duplicates *)
-
-  val iter :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
-    f:('key -> 'value -> unit) ->
-    ('key, 'value, 'perm, 'dup) Map.t ->
-    unit
-
-  val iter_rev :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
-    f:('key -> 'value -> unit) ->
-    ('key, 'value, 'perm, 'dup) Map.t ->
-    unit
-
-  val fold_left :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
-    f:('a -> 'key -> 'value -> 'a) -> 'a ->
-    ('key, 'value, 'perm, 'dup) Map.t ->
-    'a
-
-  val fold_right :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
-    f:('key -> 'value -> 'a -> 'a) ->
-    ('key, 'value, 'perm, 'dup) Map.t ->
-    'a -> 'a
-
-  (** Call [f] once for each key passing the key and {e all} associated values. *)
-
-  val iter_all :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
-    f:('key -> 'value array -> unit) ->
-    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
-    unit
-
-  val iter_rev_all :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
-    f:('key -> 'value array -> unit) ->
-    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
-    unit
-
-  val fold_left_all :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
-    f:('a -> 'key -> 'value array -> 'a) -> 'a ->
-    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
-    'a
-
-  val fold_right_all :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
-    f:('key -> 'value array -> 'a -> 'a) ->
-    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
-    'a -> 'a
-
 
   (** {2 Modification} *)
 
@@ -544,29 +489,13 @@ end
 
   (** {3 Moving} *)
 
+  (** {4 Moving over all key-value pairs } *)
+
   (** [first cursor] moves the cursor to the {e first} value of the first key. *)
   val first       : ('key, 'value, [> `Read ], _) t -> 'key * 'value
 
-  (** [first_all cursor]
-      moves the cursor to the {e last} value of the first key.
-      Returns all values of the first key.
-  *)
-  val first_all   : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'key * 'value array
-
-  (** [first_dup cursor] moves the cursor to the first {e value} of the current key. *)
-  val first_dup : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'value
-
   (** [last cursor] moves the cursor to the {e last} value of the last key. *)
   val last        : ('key, 'value, [> `Read ], _) t -> 'key * 'value
-
-  (** [last_all cursor]
-      moves the cursor to the {e first} value of the last key.
-      Returns all values of the {e last} key.
-  *)
-  val last_all    : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'key * 'value array
-
-  (** [last_dup cursor] moves the cursor to the last {e value} of the current key. *)
-  val last_dup : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'value
 
   (** [next cursor] moves the cursor to the next key-value pair.
       This may be the {e next value} of the {e current key} or the
@@ -574,10 +503,58 @@ end
   *)
   val next        : ('key, 'value, [> `Read ], _) t -> 'key * 'value
 
+  (** [prev cursor] moves the cursor to the previous key-value pair.
+      This may be the {e previous value} of the {e current key} or the
+      {e last value} of the {e previous key}.
+  *)
+  val prev        : ('key, 'value, [> `Read ], _) t -> 'key * 'value
+
+
+  (** {4 Moving to neighboring keys } *)
+
   (** [next_nodup cursor]
       moves the cursor to the {e first} value of the next key.
   *)
   val next_nodup  : ('key, 'value, [> `Read ], _) t -> 'key * 'value
+
+  (** [prev_nodup cursor]
+      moves the cursor to the {e last} value of the previous key.
+  *)
+  val prev_nodup  : ('key, 'value, [> `Read ], _) t -> 'key * 'value
+
+
+  (** {4 Moving over duplicates of a single key } *)
+
+  (** [first_dup cursor] moves the cursor to the first {e value} of the current key. *)
+  val first_dup : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'value
+
+  (** [last_dup cursor] moves the cursor to the last {e value} of the current key. *)
+  val last_dup : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'value
+
+  (** [next_dup cursor] moves the cursor to the next value of the current key.
+      @raise Not_found if the cursor is already on the last value of the current key.
+  *)
+  val next_dup : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'value
+
+  (** [prev_dup cursor] moves the cursor to the previous value of the current key.
+      @raise Not_found if the cursor is already on the first value of the current key.
+  *)
+  val prev_dup : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'value
+
+
+  (** {4 Moving over keys getting all duplicates } *)
+
+  (** [first_all cursor]
+      moves the cursor to the {e last} value of the first key.
+      Returns all values of the first key.
+  *)
+  val first_all   : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'key * 'value array
+
+  (** [last_all cursor]
+      moves the cursor to the {e first} value of the last key.
+      Returns all values of the {e last} key.
+  *)
+  val last_all    : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'key * 'value array
 
   (** [next_all cursor]
       moves the cursor to the {e last} value of the next key.
@@ -585,32 +562,67 @@ end
   *)
   val next_all    : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'key * 'value array
 
-  (** [next_dup cursor] moves the cursor to the next value of the current key.
-      @raise Not_found if the cursor is already on the last value of the current key.
-  *)
-  val next_dup : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'value
-
-  (** [prev cursor] moves the cursor to the previous key-value pair.
-      This may be the {e previous value} of the {e current key} or the
-      {e last value} of the {e previous key}.
-  *)
-  val prev        : ('key, 'value, [> `Read ], _) t -> 'key * 'value
-
-  (** [prev_nodup cursor]
-      moves the cursor to the {e last} value of the previous key.
-  *)
-  val prev_nodup  : ('key, 'value, [> `Read ], _) t -> 'key * 'value
-
   (** [prev_all cursor]
       moves the cursor to the {e first} value of the previous key.
       Returns all values of the previous key.
   *)
   val prev_all    : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'key * 'value array
 
-  (** [prev_dup cursor] moves the cursor to the previous value of the current key.
-      @raise Not_found if the cursor is already on the first value of the current key.
-  *)
-  val prev_dup : ('key, 'value, [> `Read ], [> `Dup ]) t -> 'value
+
+  (** {2 Convenient Iterators} *)
+
+  (** Call [f] once for each key-value pair.
+      Will call [f] multiple times with the same key for duplicates *)
+
+  val iter :
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    f:('key -> 'value -> unit) ->
+    ('key, 'value, 'perm, 'dup) Map.t ->
+    unit
+
+  val iter_rev :
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    f:('key -> 'value -> unit) ->
+    ('key, 'value, 'perm, 'dup) Map.t ->
+    unit
+
+  val fold_left :
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    f:('a -> 'key -> 'value -> 'a) -> 'a ->
+    ('key, 'value, 'perm, 'dup) Map.t ->
+    'a
+
+  val fold_right :
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    f:('key -> 'value -> 'a -> 'a) ->
+    ('key, 'value, 'perm, 'dup) Map.t ->
+    'a -> 'a
+
+  (** Call [f] once for each key passing the key and {e all} associated values. *)
+
+  val iter_all :
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    f:('key -> 'value array -> unit) ->
+    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
+    unit
+
+  val iter_rev_all :
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    f:('key -> 'value array -> unit) ->
+    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
+    unit
+
+  val fold_left_all :
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    f:('a -> 'key -> 'value array -> 'a) -> 'a ->
+    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
+    'a
+
+  val fold_right_all :
+    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    f:('key -> 'value array -> 'a -> 'a) ->
+    ('key, 'value, 'perm, [> `Dup ] as  'dup) Map.t ->
+    'a -> 'a
 end
 
 
