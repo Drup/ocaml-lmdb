@@ -46,6 +46,8 @@ module type Flags = sig
   (** [none] The empty set of flags. *)
 end
 
+module Flags : Flags
+
 
 (** {2 Environment} *)
 
