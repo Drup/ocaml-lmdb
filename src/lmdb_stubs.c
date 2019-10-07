@@ -82,8 +82,8 @@ int constants[] = {
   sizeof(size_t),
 };
 
-value *exn_exists;
-value *exn_error;
+const value *exn_exists;
+const value *exn_error;
 
 
 void mdbs_assert_func(MDB_env *env, const char *msg) {
