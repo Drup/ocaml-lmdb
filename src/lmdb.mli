@@ -139,7 +139,7 @@ end
   (** [abort txn] aborts transaction [txn] and the current [go] function,
       which will return [None].
   *)
-  val abort : 'perm t -> 'b
+  val abort : _ t -> _
 
   val env : 'perm t -> Env.t
   (** [env txn] returns the environment of [txn] *)
