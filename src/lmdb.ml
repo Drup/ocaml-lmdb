@@ -432,8 +432,6 @@ module Cursor = struct
     constraint 'dup = [< `Dup | `Uni ]
     constraint 'perm = [< `Read | `Write ]
 
-  exception Abort of Obj.t
-
   let go perm ?txn (map :_ Map.t) f =
     Txn.trivial perm map.env ?txn @@ fun t ->
     let cursor =
@@ -443,18 +441,10 @@ module Cursor = struct
     try
       let res = f cursor in
       Mdb.cursor_close cursor.cursor;
-      Some res
-    with
-    | Abort c when c == Obj.repr cursor ->
-      Mdb.cursor_close cursor.cursor;
-      if txn = None
-      then (Mdb.txn_abort t; None)
-      else invalid_arg "Lmdb.Cursor.abort: won't abort enclosing transaction."
-    | exn ->
+      res
+    with exn ->
       Mdb.cursor_close cursor.cursor;
       raise exn
-
-  let abort cursor = raise (Abort (Obj.repr cursor))
 
   (* Used internally for trivial functions, not exported. *)
   let trivial perm ?cursor (map :_ Map.t) f =
@@ -465,9 +455,7 @@ module Cursor = struct
           "Lmdb.Cursor.fold: Got cursor for wrong map";
       f cursor
     | None ->
-      match go perm map f with
-      | None -> assert false
-      | Some x -> x
+      go perm map f
 
   let seek { cursor ; map } k =
     let key = map.key and value = map.value in

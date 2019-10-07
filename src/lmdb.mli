@@ -390,17 +390,9 @@ end
 
       @param txn if omitted a transient transaction will implicitely be
       created before calling [f] and be committed after [f] returns.
-      Such a transient transaction may be aborted using {! abort}.
   *)
   val go : 'perm perm -> ?txn:'perm Txn.t -> ('key, 'value, 'dup) Map.t ->
-    (('key, 'value, 'perm, 'dup) t -> 'a) -> 'a option
-
-  (** [abort cursor] aborts [cursor] and the current [go] function,
-      which will return [None].
-      @raise Invalid_argument if a transaction [~txn] was passed to the [go]
-      function.
-  *)
-  val abort : _ t -> unit
+    (('key, 'value, 'perm, 'dup) t -> 'a) -> 'a
 
 
   (** {2 Modification} *)
