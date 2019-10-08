@@ -18,7 +18,7 @@ let () =
       | None -> None
       | Some pc ->
           C.Pkg_config.query pc
-            ~package:"liblmdb"
+            ~package:"lmdb"
     in
     let lmdb =
       match lmdb_pc with
