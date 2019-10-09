@@ -54,6 +54,27 @@ let[@warning "-26-27"] capabilities () =
 
 let check_kv = check (pair int int)
 
+let test_types =
+  let map =
+    Map.(create Nodup
+           ~key:Conv.int32_be_as_int
+           ~value:Conv.int32_be_as_int
+           ~name:"Capabilities") env
+  in
+  "types",
+  [ "value restriction", `Quick, begin fun () ->
+        ignore @@ Txn.go Rw ?txn:None env @@ fun txn ->
+        Map.stats ~txn map |> ignore;
+        Map.put ~txn map 1 1;
+      end
+  ; "can read from writable", `Quick, begin fun () ->
+      ignore @@ Txn.go Rw env
+        (fun (txn : [> `Write] Txn.t) -> Map.stats ~txn map |> ignore);
+    end
+  ; "ro txn on rw env", `Quick, begin fun () ->
+      Txn.go Ro env ignore |> ignore
+    end
+  ]
 
 let test_nodup =
   "no duplicates",
@@ -497,6 +518,7 @@ let test_regress =
 let () =
   run "Lmdb"
     [ "capabilities", [ "capabilities", `Quick, capabilities ]
+    ; test_types
     ; test_nodup
     ; test_dup
     ; test_int
