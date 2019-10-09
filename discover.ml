@@ -1,10 +1,16 @@
 module C = Configurator.V1
 
+let split_env var =
+  try
+    Str.(split (regexp_string ":")) (Sys.getenv var)
+  with Not_found -> []
 let include_candidates =
+  split_env "CPATH" @
   [ "/usr/include"
   ; "/usr/local/include"
   ; "/opt/include" ]
 and lib_candidates =
+  split_env "LIBRARY_PATH" @
   [ "/lib"
   ; "/usr/lib"
   ; "/usr/local/lib"
