@@ -26,13 +26,17 @@ depends: [
 ]
 
 depexts: [
-  ["liblmdb-dev"] {os-distribution = "debian"}
-  ["liblmdb-dev"] {os-distribution = "ubuntu"}
-  ["lmdb"] {os = "macos" & os-distribution = "homebrew"}
-  ["lmdb"] {os = "macos" & os-distribution = "macports"}
-  ["lmdb-devel"] {os-distribution = "centos"}
-  ["lmdb-devel"] {os-distribution = "fedora"}
-  ["lmdb-devel"] {os-distribution = "opensuse"}
-  ["lmdb"] {os-distribution = "alpine"}
-  ["lmdb"] {os-distribution = "archlinux"}
+  ["liblmdb-dev"] {os-family = "debian"}
+  ["lmdb"] {os-family = "bsd"}
+  ["lmdb"] {os-family = "homebrew"}
+  ["lmdb"] {os-family = "macports"}
+  ["lmdb"] {os-family = "alpine"}
+  ["lmdb"] {os-family = "archlinux"}
+  ["lmdb"] {os-family = "gentoo"}
+  ["lmdb-devel"] {os-family = "rhel"}
+  ["lmdb-devel"] {os-family = "centos"}
+  ["lmdb-devel"] {os-family = "fedora"}
+  ["lmdb-devel"] {os-family = "suse"}
+  ["lmdb-devel"] {os-family = "opensuse"}
+  ["liblmdb-devel"] {os-family = "mageia"}
 ]
