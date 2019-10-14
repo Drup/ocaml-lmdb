@@ -110,7 +110,7 @@ external env_get_maxkeysize : env -> int
 external reader_list : env -> (string -> int) -> int
   = "mdbs_reader_list"
 external reader_check : env -> int = "mdbs_reader_check"
-type stats = {
+type stat = {
   psize : int;
   depth : int;
   branch_pages : int;
@@ -118,7 +118,7 @@ type stats = {
   overflow_pages : int;
   entries : int;
 }
-external env_stat : env -> stats = "mdbs_env_stat"
+external env_stat : env -> stat = "mdbs_env_stat"
 
 
 (** {2 Transaction} *)
@@ -192,7 +192,7 @@ external dbi_close : env -> dbi -> unit
   = "mdbs_dbi_close"
 external dbi_flags : txn -> dbi -> DbiFlags.t
   = "mdbs_dbi_flags"
-external dbi_stat : txn -> dbi -> stats
+external dbi_stat : txn -> dbi -> stat
   = "mdbs_stat"
 external drop : txn -> dbi -> bool -> unit
   = "mdbs_drop"

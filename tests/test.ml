@@ -64,12 +64,12 @@ let test_types =
   "types",
   [ "value restriction", `Quick, begin fun () ->
         ignore @@ Txn.go Rw ?txn:None env @@ fun txn ->
-        Map.stats ~txn map |> ignore;
+        Map.stat ~txn map |> ignore;
         Map.put ~txn map 1 1;
       end
   ; "can read from writable", `Quick, begin fun () ->
       ignore @@ Txn.go Rw env
-        (fun (txn : [> `Write] Txn.t) -> Map.stats ~txn map |> ignore);
+        (fun (txn : [> `Write] Txn.t) -> Map.stat ~txn map |> ignore);
     end
   ; "ro txn on rw env", `Quick, begin fun () ->
       Txn.go Ro env ignore |> ignore

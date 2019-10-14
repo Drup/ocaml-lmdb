@@ -14,7 +14,7 @@ let test env =
         in
         let count = 250 in
         put_count t count ;
-        assert ((Map.stats t).entries = count) ;
+        assert ((Map.stat t).entries = count) ;
         (* Iterate using cursor and print keys *)
         ignore @@ Lmdb.Cursor.go Ro t (fun cur ->
             (* Triggering GC here also SEGFAULTs *)

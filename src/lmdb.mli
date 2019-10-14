@@ -90,7 +90,7 @@ module Env : sig
 
   val fd : t -> Unix.file_descr
 
-  val stats : t -> Mdb.stats
+  val stat : t -> Mdb.stat
 
   val max_readers : t -> int
 
@@ -335,7 +335,7 @@ module Map : sig
 
   (** {2 Misc} *)
 
-  val stats : ?txn: [> `Read ] Txn.t -> ('key, 'value, _) t -> Mdb.stats
+  val stat : ?txn: [> `Read ] Txn.t -> ('key, 'value, _) t -> Mdb.stat
 
   (** [drop ?delete map] Empties [map].
       @param delete If [true] [map] is also deleted from the environment
