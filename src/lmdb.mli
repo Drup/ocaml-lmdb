@@ -92,6 +92,8 @@ module Env : sig
 
   val stat : t -> Mdb.stat
 
+  val info : t -> Mdb.envinfo
+
   val max_readers : t -> int
 
   val max_keysize : t -> int

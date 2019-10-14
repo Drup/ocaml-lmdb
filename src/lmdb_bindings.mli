@@ -119,6 +119,17 @@ type stat = {
   entries : int;
 }
 external env_stat : env -> stat = "mdbs_env_stat"
+type envinfo =
+  { map_addr : int
+  (** To recover the actual address this integer needs to be shifted to the
+      left by one bit. A 31 bit integer may overflow. *)
+  ; map_size : int
+  ; last_pgno : int
+  ; last_txnid : int
+  ; max_readers : int
+  ; num_readers : int
+  }
+external env_info : env -> envinfo = "mdbs_env_info"
 
 
 (** {2 Transaction} *)
