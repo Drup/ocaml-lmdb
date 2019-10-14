@@ -318,6 +318,26 @@ CAMLprim value mdbs_stat(value txn, value dbi)
   return make_stat(&cstat);
 }
 
+CAMLprim value mdbs_env_info(value env)
+{
+  MDB_envinfo cinfo;
+  value info;
+
+  mdbs_err_rel(mdb_env_info(
+	unhide(env),
+	&cinfo));
+
+  info = caml_alloc_small(6,0);
+  Field(info, 0) = hide(cinfo.me_mapaddr);
+  Field(info, 1) = Val_long(cinfo.me_mapsize);
+  Field(info, 2) = Val_long(cinfo.me_last_pgno);
+  Field(info, 3) = Val_long(cinfo.me_last_txnid);
+  Field(info, 4) = Val_int (cinfo.me_maxreaders);
+  Field(info, 5) = Val_int (cinfo.me_numreaders);
+
+  return info;
+}
+
 CAMLprim value mdbs_env_copy2(value env, value path, value flags)
 {
   char cpath[caml_string_length(path) + 1];

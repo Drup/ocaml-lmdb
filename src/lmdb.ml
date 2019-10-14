@@ -78,6 +78,7 @@ module Env = struct
   let reader_check = Mdb.reader_check
 
   let stat = Mdb.env_stat
+  let info = Mdb.env_info
 end
 
 module Txn = struct

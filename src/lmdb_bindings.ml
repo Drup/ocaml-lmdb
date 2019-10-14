@@ -102,6 +102,16 @@ type stat =
   ; entries : int
   }
 
+(* returned by env_info *)
+type envinfo =
+  { map_addr : int
+  ; map_size : int
+  ; last_pgno : int
+  ; last_txnid : int
+  ; max_readers : int
+  ; num_readers : int
+  }
+
 type bigstring = Bigstringaf.t
 
 (* env *)
@@ -160,6 +170,8 @@ external reader_check : env -> int
   = "mdbs_reader_check"
 external env_stat : env -> stat
   = "mdbs_env_stat"
+external env_info : env -> envinfo
+  = "mdbs_env_info"
 
 (* txn *)
 type txn
