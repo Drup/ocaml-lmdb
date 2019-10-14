@@ -77,7 +77,7 @@ module Env = struct
 
   let reader_check = Mdb.reader_check
 
-  let stats = Mdb.env_stat
+  let stat = Mdb.env_stat
 end
 
 module Txn = struct
@@ -340,7 +340,7 @@ module Map = struct
   and open_existing dup ~key ~value ?txn ?name env =
     create Ro dup ~key ~value ?txn ?name env
 
-  let stats ?txn {env; dbi; _} =
+  let stat ?txn {env; dbi; _} =
     Txn.trivial Ro ?txn env @@ fun txn ->
     Mdb.dbi_stat txn dbi
 

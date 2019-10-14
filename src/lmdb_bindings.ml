@@ -92,8 +92,8 @@ module Flags :Flags with type t = int = struct
   let none :t = 0
 end
 
-(* stats returned by env_stat and dbi_stat *)
-type stats =
+(* returned by env_stat and dbi_stat *)
+type stat =
   { psize : int
   ; depth : int
   ; branch_pages : int
@@ -158,7 +158,7 @@ external reader_list : env -> (string -> int) -> int
   = "mdbs_reader_list"
 external reader_check : env -> int
   = "mdbs_reader_check"
-external env_stat : env -> stats
+external env_stat : env -> stat
   = "mdbs_env_stat"
 
 (* txn *)
@@ -215,7 +215,7 @@ external dbi_close : env -> dbi -> unit
   = "mdbs_dbi_close"
 external dbi_flags : txn -> dbi -> Flags.t
   = "mdbs_dbi_flags"
-external dbi_stat : txn -> dbi -> stats
+external dbi_stat : txn -> dbi -> stat
   = "mdbs_stat"
 external drop : txn -> dbi -> bool -> unit
   = "mdbs_drop"
