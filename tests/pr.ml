@@ -1,3 +1,4 @@
+open Alcotest
 open Lmdb
 
 let test env =
@@ -27,5 +28,33 @@ let test env =
                 print_keys (count - 1)
             in
             print_keys count );
+      end
+  ; "double txn_abort", `Quick, begin fun () ->
+        (* mdb_txn_commit may return MDB_MAP_FULL.
+         * In that case we did call mdb_txn_abort, which resulted in the
+         * transaction being freed twice. *)
+        let map = Map.(create Nodup ~key:Conv.int32_le_as_int ~value:Conv.string) env ~name:"double txn_abort" in
+        check_raises "expecting MDB_MAP_FULL from txn_commit" Lmdb.(Error ~-30792) begin fun () ->
+          for i=100 to max_int do
+            Map.(put ~flags:Flags.append) map i "blub"
+          done
+        end;
+        let map_size = Env.(info env).map_size in
+        Env.set_map_size env (2 * map_size);
+        check pass "resized map" () ();
+        Map.put map 1 "blub";
+        check pass "put successfull" () ();
+        Map.drop ~delete:false map;
+        check (option unit) "txn finishes with None" None @@
+        Txn.go Rw env begin fun txn ->
+          let bulk = String.make 1024 '#' in
+          check_raises "expecting MDB_MAP_FULL from put" (Error ~-30792) begin fun () ->
+            for i=100 to max_int do
+              Map.(put ~txn ~flags:Flags.append) map i bulk
+            done
+          end;
+        end;
+        Map.put map 1 "blub";
+        check pass "put successfull" () ();
       end
   ]
