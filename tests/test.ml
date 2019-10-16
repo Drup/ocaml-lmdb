@@ -518,7 +518,7 @@ let test_regress =
 let test_txn =
   "transaction",
   let map = Map.(create Nodup ~key:Conv.int32_le_as_int ~value:Conv.string) env ~name:"double txn_abort" in
-  [ "MAP_FULL triggered by txn_commit", `Quick, begin fun () ->
+  [ "MAP_FULL triggered by txn_commit", `Slow, begin fun () ->
         (* mdb_txn_commit may return MDB_MAP_FULL.
          * In that case we did call mdb_txn_abort, which resulted in the
          * transaction being freed twice. *)
@@ -534,7 +534,7 @@ let test_txn =
         check pass "put successfull" () ();
         Map.drop ~delete:false map;
     end
-  ; "MAP_FULL triggered by Map.put", `Quick, begin fun () ->
+  ; "MAP_FULL triggered by Map.put", `Slow, begin fun () ->
         check_raises "expecting Map_full from Txn.go" Map_full begin fun () ->
           ignore @@ Txn.go Rw env @@ fun txn ->
           let bulk = String.make 1024 '#' in
@@ -546,7 +546,7 @@ let test_txn =
         check pass "put successfull" () ();
         Map.drop ~delete:false map;
     end
-  ; "MAP_FULL not passed on to Txn.go", `Quick, begin fun () ->
+  ; "MAP_FULL not passed on to Txn.go", `Slow, begin fun () ->
         check_raises "expecting MDB_BAD_TXN from Txn.go" (Error ~-30782) begin fun () ->
           ignore @@ Txn.go Rw env @@ fun txn ->
           let bulk = String.make 1024 '#' in
