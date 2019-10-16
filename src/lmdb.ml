@@ -98,13 +98,10 @@ module Txn = struct
     let txn = Mdb.txn_begin env parent flags in
     match f txn with
     | result ->
-      begin try Mdb.txn_commit txn; Some result with
-      | Error e when e = ~-30782 (* MDB_BAD_TXN *) ->
-        Mdb.txn_abort txn;
-        None
-        (* In case txn_commit fails with MDB_MAP_FULL,
-         * the txn has been aborted by txn_commit. *)
-      end
+      Mdb.txn_commit txn;
+      Some result
+      (* In case txn_commit fails with MDB_MAP_FULL or MDB_BAD_TXN, the txn has
+       * been aborted by txn_commit. In those cases don't catch the exception. *)
     | exception Abort t when t == Obj.repr txn || parent = None ->
       Mdb.txn_abort txn;
       None
