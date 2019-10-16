@@ -490,7 +490,7 @@ let test_stress =
     Map.drop ~delete:true map
   in
   [ "stress 1s", `Quick, stress 1.
-  ; "stress 500s", `Slow, stress 500.
+  (*; "stress 500s", `Slow, stress 500. too slow *)
   ]
 
 let test_regress =
