@@ -1,4 +1,5 @@
 exception Exists
+exception Map_full
 exception Error of int
 
 (* return codes *)
@@ -61,6 +62,7 @@ let
   =
   Callback.register_exception "LmdbExists" Exists;
   Callback.register_exception "LmdbError" (Error 0);
+  Callback.register_exception "LmdbMapFull" (Map_full);
   Printexc.register_printer @@ begin function
     | Error i -> Some ("Lmdb.Error(" ^ strerror i ^ ")")
     | Exists -> Some "Lmdb.Exists"

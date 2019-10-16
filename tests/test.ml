@@ -490,7 +490,7 @@ let test_stress =
     Map.drop ~delete:true map
   in
   [ "stress 1s", `Quick, stress 1.
-  ; "stress 500s", `Slow, stress 500.
+  (*; "stress 500s", `Slow, stress 500. too slow *)
   ]
 
 let test_regress =
@@ -515,6 +515,51 @@ let test_regress =
     end
   ]
 
+let test_txn =
+  "transaction",
+  let map = Map.(create Nodup ~key:Conv.int32_le_as_int ~value:Conv.string) env ~name:"double txn_abort" in
+  [ "MAP_FULL triggered by txn_commit", `Quick, begin fun () ->
+        (* mdb_txn_commit may return MDB_MAP_FULL.
+         * In that case we did call mdb_txn_abort, which resulted in the
+         * transaction being freed twice. *)
+        check_raises "expecting Map_full from txn_commit" Map_full begin fun () ->
+          for i=100 to max_int do
+            Map.(put ~flags:Flags.append) map i "blub" (* Calls Txn.trivial *)
+          done
+        end;
+        let map_size = Env.(info env).map_size in
+        Env.set_map_size env (2 * map_size);
+        check pass "resized map" () ();
+        Map.put map 1 "blub";
+        check pass "put successfull" () ();
+        Map.drop ~delete:false map;
+    end
+  ; "MAP_FULL triggered by Map.put", `Quick, begin fun () ->
+        check_raises "expecting Map_full from Txn.go" Map_full begin fun () ->
+          ignore @@ Txn.go Rw env @@ fun txn ->
+          let bulk = String.make 1024 '#' in
+          for i=100 to max_int do
+            Map.(put ~txn ~flags:Flags.append) map i bulk
+          done
+        end;
+        Map.put map 1 "blub";
+        check pass "put successfull" () ();
+        Map.drop ~delete:false map;
+    end
+  ; "MAP_FULL not passed on to Txn.go", `Quick, begin fun () ->
+        check_raises "expecting MDB_BAD_TXN from Txn.go" (Error ~-30782) begin fun () ->
+          ignore @@ Txn.go Rw env @@ fun txn ->
+          let bulk = String.make 1024 '#' in
+          check_raises "expecting Map_full from Map.put" Map_full @@ fun () ->
+          for i=100 to max_int do
+            Map.(put ~txn ~flags:Flags.append) map i bulk
+          done
+        end;
+        Map.put map 1 "blub";
+        check pass "put successfull" () ();
+      end
+  ]
+
 let () =
   run "Lmdb"
     [ "capabilities", [ "capabilities", `Quick, capabilities ]
@@ -524,5 +569,6 @@ let () =
     ; test_int
     ; test_regress
     ; Pr.test env
+    ; test_txn
     ; test_stress
     ]

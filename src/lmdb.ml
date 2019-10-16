@@ -4,6 +4,7 @@ module Bigstring = Bigstringaf
 
 exception Not_found = Not_found
 exception Exists = Mdb.Exists
+exception Map_full = Mdb.Map_full
 exception Error = Mdb.Error
 
 type 'a perm =
@@ -96,13 +97,20 @@ module Txn = struct
       | Ro -> Env.Flags.read_only
     in
     let txn = Mdb.txn_begin env parent flags in
-    try
-      let x = f txn in
-      Mdb.txn_commit txn ; Some x
-    with
-      | Abort t when t == Obj.repr txn || parent = None ->
-        Mdb.txn_abort txn ; None
-      | exn -> Mdb.txn_abort txn ; raise exn
+    match f txn with
+    | result ->
+      Mdb.txn_commit txn;
+      Some result
+      (* In case txn_commit fails with MDB_MAP_FULL or MDB_BAD_TXN, the txn has
+       * been aborted by txn_commit. In those cases don't catch the exception. *)
+    | exception Abort t when t == Obj.repr txn || parent = None ->
+      Mdb.txn_abort txn;
+      None
+    | exception exn ->
+      (*let bt = Printexc.get_raw_backtrace () in*)
+      Mdb.txn_abort txn;
+      raise exn
+      (*Printexc.raise_with_backtrace exn bt - since OCaml 4.05 *)
 
   (* Used internally for trivial functions, not exported. *)
   let trivial perm ?txn e f =
@@ -439,13 +447,15 @@ module Cursor = struct
       { cursor = Mdb.cursor_open t map.dbi
       ; map = map }
     in
-    try
-      let res = f cursor in
+    match f cursor with
+    | result ->
       Mdb.cursor_close cursor.cursor;
-      res
-    with exn ->
+      result
+    | exception exn ->
+      (*let bt = Printexc.get_raw_backtrace () in*)
       Mdb.cursor_close cursor.cursor;
       raise exn
+      (*Printexc.raise_with_backtrace exn bt - since OCaml 4.05 *)
 
   (* Used internally for trivial functions, not exported. *)
   let trivial perm ?cursor (map :_ Map.t) f =
