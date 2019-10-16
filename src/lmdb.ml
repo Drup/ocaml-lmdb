@@ -106,7 +106,7 @@ module Txn = struct
       Mdb.txn_abort txn;
       None
     | exception exn ->
-      let bt = Printexc.get_raw_backtrace () in
+      (*let bt = Printexc.get_raw_backtrace () in*)
       Mdb.txn_abort txn;
       raise exn
       (*Printexc.raise_with_backtrace exn bt - since OCaml 4.05 *)
@@ -451,7 +451,7 @@ module Cursor = struct
       Mdb.cursor_close cursor.cursor;
       result
     | exception exn ->
-      let bt = Printexc.get_raw_backtrace () in
+      (*let bt = Printexc.get_raw_backtrace () in*)
       Mdb.cursor_close cursor.cursor;
       raise exn
       (*Printexc.raise_with_backtrace exn bt - since OCaml 4.05 *)
