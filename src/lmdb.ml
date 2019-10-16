@@ -108,7 +108,8 @@ module Txn = struct
     | exception exn ->
       let bt = Printexc.get_raw_backtrace () in
       Mdb.txn_abort txn;
-      Printexc.raise_with_backtrace exn bt
+      raise exn
+      (*Printexc.raise_with_backtrace exn bt - since OCaml 4.05 *)
 
   (* Used internally for trivial functions, not exported. *)
   let trivial perm ?txn e f =
@@ -452,7 +453,8 @@ module Cursor = struct
     | exception exn ->
       let bt = Printexc.get_raw_backtrace () in
       Mdb.cursor_close cursor.cursor;
-      Printexc.raise_with_backtrace exn bt
+      raise exn
+      (*Printexc.raise_with_backtrace exn bt - since OCaml 4.05 *)
 
   (* Used internally for trivial functions, not exported. *)
   let trivial perm ?cursor (map :_ Map.t) f =
