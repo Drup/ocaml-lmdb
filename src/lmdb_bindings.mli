@@ -9,6 +9,7 @@ val version : string * int * int * int
 (** {2 Exceptions} *)
 
 exception Exists
+exception Map_full
 exception Error of int
 external strerror : int -> string = "mdbs_strerror"
 

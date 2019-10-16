@@ -522,7 +522,7 @@ let test_txn =
         (* mdb_txn_commit may return MDB_MAP_FULL.
          * In that case we did call mdb_txn_abort, which resulted in the
          * transaction being freed twice. *)
-        check_raises "expecting MDB_MAP_FULL from txn_commit" Lmdb.(Error ~-30792) begin fun () ->
+        check_raises "expecting Map_full from txn_commit" Map_full begin fun () ->
           for i=100 to max_int do
             Map.(put ~flags:Flags.append) map i "blub" (* Calls Txn.trivial *)
           done
@@ -535,7 +535,7 @@ let test_txn =
         Map.drop ~delete:false map;
     end
   ; "MAP_FULL triggered by Map.put", `Quick, begin fun () ->
-        check_raises "expecting MDB_MAP_FULL from Txn.go" (Error ~-30792) begin fun () ->
+        check_raises "expecting Map_full from Txn.go" Map_full begin fun () ->
           ignore @@ Txn.go Rw env @@ fun txn ->
           let bulk = String.make 1024 '#' in
           for i=100 to max_int do
@@ -550,7 +550,7 @@ let test_txn =
         check_raises "expecting MDB_BAD_TXN from Txn.go" (Error ~-30782) begin fun () ->
           ignore @@ Txn.go Rw env @@ fun txn ->
           let bulk = String.make 1024 '#' in
-          check_raises "expecting MDB_MAP_FULL from Map.put" (Error ~-30792) @@ fun () ->
+          check_raises "expecting Map_full from Map.put" Map_full @@ fun () ->
           for i=100 to max_int do
             Map.(put ~txn ~flags:Flags.append) map i bulk
           done

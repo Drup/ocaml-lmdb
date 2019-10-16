@@ -629,6 +629,9 @@ exception Exists
 exception Not_found
 (** Raised when searching for non-existing key *)
 
+exception Map_full
+(** Raised when memory map is full *)
+
 exception Error of int
 (** Other errors are reported with [Invalid_arg s] or [Error n]. *)
 

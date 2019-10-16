@@ -83,6 +83,7 @@ int constants[] = {
 };
 
 const value *exn_exists;
+const value *exn_map_full;
 const value *exn_error;
 
 
@@ -108,6 +109,7 @@ CAMLprim value mdbs_init(value unit)
   unsigned i;
 
   exn_exists = caml_named_value("LmdbExists");
+  exn_map_full = caml_named_value("LmdbMapFull");
   exn_error  = caml_named_value("LmdbError");
 
   string = caml_copy_string(mdb_version(&major, &minor, &patch));
@@ -145,6 +147,8 @@ void mdbs_err(int errn)
       caml_raise_not_found();
     case MDB_KEYEXIST:
       caml_raise_constant(*exn_exists);
+    case MDB_MAP_FULL:
+      caml_raise_constant(*exn_map_full);
     case EINVAL:
       caml_invalid_argument("Lmdb");
     default:

@@ -4,6 +4,7 @@ module Bigstring = Bigstringaf
 
 exception Not_found = Not_found
 exception Exists = Mdb.Exists
+exception Map_full = Mdb.Map_full
 exception Error = Mdb.Error
 
 type 'a perm =
