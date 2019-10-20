@@ -66,7 +66,7 @@ module Env : sig
       @param map_size Size of the memory map. Limited by the virtual address space.
       @param max_readers Maximum number of threads/reader slots.
       @param max_maps Maximum number of named maps.
-      @param mode The UNIX permissions to set on created files and semaphores. Default is [0o755].
+      @param mode The UNIX permissions to set on created files and semaphores. Default is [0o644].
   *)
   val create :
     _ perm -> ?max_readers:int -> ?map_size:int -> ?max_maps:int ->

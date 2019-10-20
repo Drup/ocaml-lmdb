@@ -26,7 +26,7 @@ module Env = struct
 
   let create (type p) (perm : p perm)
       ?max_readers ?map_size ?max_maps
-      ?(flags=Flags.none) ?(mode=0o755)
+      ?(flags=Flags.none) ?(mode=0o644)
       path =
     let flags =
       match perm with
