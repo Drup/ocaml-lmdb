@@ -25,7 +25,7 @@
     Using {!Map}, we can open the unnamed map and add our first value:
 {[
 let map = Map.open_existing Nodup ~key:Conv.string ~value:Conv.string env in
-Map.put map "Bactrian camel" "Elegant and beautiful animal with two humps."
+Map.add map "Bactrian camel" "Elegant and beautiful animal with two humps."
 ]}
 
     {{!Txn}Transactions} and {{!Cursor}Iterators} are also available.
@@ -126,7 +126,7 @@ module Txn : sig
 {[
 go rw env begin fun txn ->
   let v = Map.get ~txn k in
-  Map.put ~txn k (v+1) ;
+  Map.add ~txn k (v+1) ;
   v
 end
 ]}
@@ -311,17 +311,28 @@ module Map : sig
 
   module Flags = Lmdb_bindings.PutFlags
 
-  (** [put map key value] adds [value] to [key].
+  (** [add map key value] adds [value] to [key].
 
-      For a map not supporting duplicates an existing value is overwritten.
-      For a map supporting duplicates the value is added to the key.
+      For a map not supporting duplicates an existing value is overwritten. For
+      a map supporting duplicates the value is added to the key. This is the
+      same as [overwrite] for duplicate maps, but
+      [overwrite ~flags:Flags.no_overwrite] for non-duplicate maps.
 
       @param flags {!Flags}
-      @raise Exists if the key or key-value pair is already in the map and
-      {! Flags.no_overwrite} or {! Flags.no_dup_data} was passed in
-      [flags].
+      @raise Exists on maps not supporting duplicates if the key already exists.
+      @raise Exists if key is already bound to [value] and {!
+      Map.Flags.no_dup_data} was passed.
   *)
-  val put : ('key, 'value, _) t ->
+  val add : ('key, 'value, _) t ->
+    ?txn:[> `Write ] Txn.t -> ?flags:Flags.t -> 'key -> 'value -> unit
+
+  (** [set map key value] sets binding of [key] to [value].
+
+      Values of an already existing key are silently overwritten.
+
+      @param flags {!Flags}
+  *)
+  val set : ('key, 'value, _) t ->
     ?txn:[> `Write ] Txn.t -> ?flags:Flags.t -> 'key -> 'value -> unit
 
   (** [remove map key] removes [key] from [map].
@@ -401,25 +412,37 @@ end
 
   module Flags = Lmdb_bindings.PutFlags
 
-  (** [put cursor key value] adds [value] to [key] and moves the cursor to
+  (** [add cursor key value] adds [value] to [key] and moves the cursor to
       its position.
 
-      For a map not supporting duplicates an existing value is overwritten.
-      For a map supporting duplicates the value is added to the key.
+      For a map not supporting duplicates an existing value is overwritten. For
+      a map supporting duplicates the value is added to the key. This is the
+      same as [overwrite] for duplicate maps, but
+      [overwrite ~flags:Flags.no_overwrite] for non-duplicate maps.
 
       @param flags {!Flags}
-      @raise Exists if the key or key-value pair is already in the map and
-      {! Map.Flags.no_overwrite} or {! Map.Flags.no_dup_data} was passed in
-      [flags].
+      @raise Exists on maps not supporting duplicates if the key already exists.
+      @raise Exists if [key] is already bound to [value] and
+      {! Cursor.Flags.no_dup_data} was passed.
   *)
-  val put : ('key, 'value, [> `Read | `Write ], 'dup) t ->
+  val add : ('key, 'value, [> `Read | `Write ], _) t ->
+    ?flags:Flags.t -> 'key -> 'value -> unit
+
+  (** [set cursor key value] sets binding of [key] to [value].
+      and moves the cursor to its position.
+
+      Values of an already existing key are silently overwritten.
+
+      @param flags {!Flags}
+  *)
+  val set : ('key, 'value, _, _) t ->
     ?flags:Flags.t -> 'key -> 'value -> unit
 
   (** [replace cursor value] replace the current value by [value]. *)
   val replace : ('key, 'value, [> `Read | `Write ], _) t -> 'value -> unit
 
   (** [remove cursor] removes the current binding.
-      @param all If [true] removes all the bindings associated to the current key.
+      @param all If [true] removes all values associated to the current key.
       Default is [false].
   *)
   val remove : ?all:bool -> ('key, 'value, [> `Read | `Write ], _) t -> unit
@@ -621,9 +644,11 @@ end
 (** {2 Error reporting} *)
 
 exception Exists
-(** Raised when adding already existing key or key-value pair to a map with
-    {! Map.Flags.no_overwrite} or {! Map.Flags.no_dup_data}
-    or when trying to [put ~flags:Flags.append(_dup)] non-sorted data.
+(** Raised when adding an already existing key to a [`Uni] map or
+    adding an an already existing value with {! Map.Flags.no_dup_data} to a
+    key of a [`Dup] map.
+
+    Also raised when trying to [add ~flags:Flags.append(_dup)] non-sorted data.
 *)
 
 exception Not_found

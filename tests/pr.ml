@@ -9,7 +9,7 @@ let test env =
           | 0 -> ()
           | count ->
             let value_bytes = Bytes.make (10 * 8 * 1024) '1' in
-            Map.put t (string_of_int count) (Bytes.to_string value_bytes) ;
+            Map.add t (string_of_int count) (Bytes.to_string value_bytes) ;
             put_count t (count - 1)
         in
         let count = 250 in
