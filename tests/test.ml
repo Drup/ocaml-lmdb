@@ -41,8 +41,8 @@ let[@warning "-26-27"] capabilities () =
   (* ignore @@ (ro :> [ `Read | `Write ] cap); <- FAILS *)
   ignore @@ Txn.go Rw env_rw ?txn:None @@ fun txn_rw ->
   let txn_ro = (txn_rw :> [ `Read ] Txn.t) in
-  Map.put ~txn:txn_rw map 4 4;
-  (* Map.put ~txn:txn_ro map 4 4; <- FAILS *)
+  Map.add ~txn:txn_rw map 4 4;
+  (* Map.add ~txn:txn_ro map 4 4; <- FAILS *)
   assert (Map.get ~txn:txn_rw map 4 = 4);
   assert (Map.get ~txn:txn_ro map 4 = 4);
   Cursor.go Ro map
@@ -65,7 +65,7 @@ let test_types =
   [ "value restriction", `Quick, begin fun () ->
         ignore @@ Txn.go Rw ?txn:None env @@ fun txn ->
         Map.stat ~txn map |> ignore;
-        Map.put ~txn map 1 1;
+        Map.add ~txn map 1 1;
       end
   ; "can read from writable", `Quick, begin fun () ->
       ignore @@ Txn.go Rw env
@@ -86,7 +86,7 @@ let test_nodup =
   in
   [ "abort transaction", `Quick, begin fun () ->
       ignore @@ Txn.go Rw env begin fun txn ->
-        Map.put ~txn map 13 13;
+        Map.add ~txn map 13 13;
         Txn.abort txn;
       end;
       check_raises "expecting Not_found" Not_found
@@ -96,7 +96,7 @@ let test_nodup =
     Map.drop map;
     let rec loop n =
       if n <= 536870912 then begin
-        Map.(put map ~flags:Flags.append_dup) n n;
+        Map.(add map ~flags:Flags.append_dup) n n;
         loop (n * 2);
       end
     in loop 12;
@@ -129,9 +129,9 @@ let test_nodup =
         end;
       check int "last_kv" 805306368 !n
     end
-  ; "put first", `Quick, begin fun () ->
+  ; "add first", `Quick, begin fun () ->
       ignore @@ Cursor.go Rw map ?txn:None @@ fun cursor ->
-      for i=0 to 9 do Cursor.put cursor i i done
+      for i=0 to 9 do Cursor.add cursor i i done
     end
   ; "walk", `Quick, begin fun () ->
       let open Cursor in
@@ -152,13 +152,15 @@ let test_nodup =
       check_raises "walking beyond last key"                            Not_found
         (fun () -> next cursor |> ignore);
     end
-  ; "put", `Quick,
-    ( fun () -> Map.put map 4285 42 )
-  ; "put overwrite", `Quick,
-    ( fun () -> Map.put map 4285 2 )
-  ; "put no_overwrite", `Quick, begin fun () ->
+  ; "add", `Quick,
+    ( fun () -> Map.add map 4285 42 )
+  ; "set", `Quick,
+    ( fun () -> Map.set map 4285 2 )
+  ; "add no_overwrite", `Quick, begin fun () ->
       check_raises "Exists" Exists  @@ fun () ->
-      Map.(put map ~flags:Flags.no_overwrite) 4285 0
+      Map.(add map ~flags:Flags.no_overwrite) 4285 1;
+      check_raises "Exists" Exists  @@ fun () ->
+      Map.(add map) 4285 0;
     end
   ; "get", `Quick,
     ( fun () -> check int "blub" 2 (Map.get map 4285) )
@@ -212,7 +214,7 @@ let test_dup =
         if n <= 536870912 then begin
           let rec loop_dup m =
             if m <= 536870912 then begin
-              Cursor.(put cursor ~flags:Flags.append_dup) n m;
+              Cursor.(add cursor ~flags:Flags.append_dup) n m;
               loop_dup (m * 2);
             end
           in loop_dup n;
@@ -301,24 +303,24 @@ let test_dup =
       ignore @@ Cursor.go Rw map ?txn:None @@ fun cursor ->
       Cursor.first cursor |> check_kv "first 12" (12, 12)
     end
-  ; "put first", `Quick, begin fun () ->
+  ; "add first", `Quick, begin fun () ->
       ignore @@ Cursor.go Rw map ?txn:None @@ fun cursor ->
-      for i=0 to 9 do Cursor.put cursor i i done
+      for i=0 to 9 do Cursor.add cursor i i done
     end
   ; "get", `Quick, begin fun () ->
       ignore @@ Cursor.go Rw map ?txn:None @@ fun cursor ->
       check int "retrieve correct value for key" 5 (Cursor.get cursor 5)
     end
-  ; "put no_dup_data", `Quick, begin fun () ->
-      Map.(put map ~flags:Flags.no_dup_data) 4285 0;
-      Map.(put map ~flags:Flags.no_dup_data) 4285 1;
+  ; "add no_dup_data", `Quick, begin fun () ->
+      Map.(add map ~flags:Flags.no_dup_data) 4285 0;
+      Map.(add map ~flags:Flags.no_dup_data) 4285 1;
       check_raises "Exists" Exists
-        (fun () -> Map.(put map ~flags:Flags.no_dup_data) 4285 0);
+        (fun () -> Map.(add map ~flags:Flags.no_dup_data) 4285 0);
     end
   ; "walk dup", `Quick, begin fun () ->
       let open Cursor in
       ignore @@ go Rw map ?txn:None @@ fun cursor ->
-      for i=0 to 9 do put cursor 10 i done;
+      for i=0 to 9 do add cursor 10 i done;
       next cursor               |> check_kv  "next"                     (12,12);
       prev cursor               |> check_kv  "prev"                     (10,9);
       first_dup cursor          |> check int "first_dup"                0;
@@ -338,23 +340,23 @@ let test_dup =
       seek_dup cursor 10 7;
       current cursor            |> check_kv  "seek_dup"                 (10,7);
     end
-  ; "put", `Quick, begin fun () ->
+  ; "add", `Quick, begin fun () ->
       ignore @@ Cursor.go Rw map ?txn:None @@ fun cursor ->
-      Cursor.put cursor 4285 42
+      Cursor.add cursor 4285 42
     end
-  ; "put no_overwrite", `Quick, begin fun () ->
+  ; "add no_overwrite", `Quick, begin fun () ->
       check_raises "failure when adding existing key" Exists @@ fun () ->
       ignore @@ Cursor.go Rw map ?txn:None @@ fun cursor ->
-      Cursor.(put cursor ~flags:Flags.no_overwrite) 4285 0
+      Cursor.(add cursor ~flags:Flags.no_overwrite) 4285 0
     end
-  ; "put dup", `Quick, begin fun () ->
+  ; "add dup", `Quick, begin fun () ->
       ignore @@ Cursor.go Rw map ?txn:None @@ fun cursor ->
-      Cursor.put cursor 4285 42
+      Cursor.add cursor 4285 42
     end
-  ; "put dup no_dup_data", `Quick, begin fun () ->
+  ; "add dup no_dup_data", `Quick, begin fun () ->
       check_raises "failure when adding existing key-value" Exists @@ fun () ->
       ignore @@ Cursor.go Rw map ?txn:None @@ fun cursor ->
-      Cursor.(put cursor ~flags:Flags.no_dup_data) 4285 42
+      Cursor.(add cursor ~flags:Flags.no_dup_data) 4285 42
     end
   ; "Not_found", `Quick, begin fun () ->
       check_raises "failure on non-existing key" Not_found @@ fun () ->
@@ -364,18 +366,18 @@ let test_dup =
   ; "first gets first dup", `Quick, begin fun () ->
       let open Cursor in
       ignore @@ go Rw map ?txn:None @@ fun cursor ->
-      put cursor ~flags:Flags.(none)       0 0;
-      put cursor ~flags:Flags.(append_dup) 0 1;
-      put cursor ~flags:Flags.(append_dup) 0 2;
+      add cursor ~flags:Flags.(none)       0 0;
+      add cursor ~flags:Flags.(append_dup) 0 1;
+      add cursor ~flags:Flags.(append_dup) 0 2;
       last cursor |> ignore;
       first cursor |> check_kv "first dup" (0,0)
     end
   ; "last gets last dup", `Quick, begin fun () ->
       let open Cursor in
       ignore @@ go Rw map ?txn:None @@ fun cursor ->
-      put cursor ~flags:Flags.(append + append_dup) 536870913 5;
-      put cursor ~flags:Flags.(append_dup) 536870913 6;
-      put cursor ~flags:Flags.(append_dup) 536870913 7;
+      add cursor ~flags:Flags.(append + append_dup) 536870913 5;
+      add cursor ~flags:Flags.(append_dup) 536870913 6;
+      add cursor ~flags:Flags.(append_dup) 536870913 7;
       first cursor |> ignore;
       last cursor |> check_kv "last dup" (536870913,7)
     end
@@ -405,7 +407,7 @@ let test_dup =
       seek cursor 0 |> ignore;
       remove cursor ~all:true;
       for i=0 to 65536 do
-        put cursor ~flags:Flags.append_dup 0 i
+        add cursor ~flags:Flags.append_dup 0 i
       done;
       let values = get_all cursor 0 in
       for i=0 to 65536 do
@@ -427,9 +429,9 @@ let test_int =
       in
       let rec loop n =
         if n < 1073741823 then begin
-          (try Map.(put ~flags:Flags.append     map n n)
+          (try Map.(add ~flags:Flags.append     map n n)
            with Exists -> fail "Ordering on keys");
-          (try Map.(put ~flags:Flags.append_dup map 1 n)
+          (try Map.(add ~flags:Flags.append_dup map 1 n)
            with Exists -> fail "Ordering on values");
           loop (n / 3 * 4);
         end
@@ -461,7 +463,7 @@ let test_stress =
       let offset = thread_id * n in
       for i = offset to offset + n - 1 do
         let dig = Digest.string @@ string_of_int i in
-        Map.put map dig dig
+        Map.add map dig dig
       done;
       for i = offset to offset + n - 1 do
         let dig = Digest.string @@ string_of_int i in
@@ -508,8 +510,8 @@ let test_regress =
       in
       check bool "compare dups" true (Map.compare_val unnamed_dup "5" "1" > 0);
       ignore @@ Cursor.go Rw unnamed_dup @@ fun cursor ->
-      Cursor.put cursor "dup_entry" "1";
-      Cursor.put cursor "dup_entry" "2";
+      Cursor.add cursor "dup_entry" "1";
+      Cursor.add cursor "dup_entry" "2";
       check (pair string (array string)) "dup entries" ("dup entry", [|"1";"2"|])
         (Cursor.current_all cursor);
     end
@@ -524,39 +526,39 @@ let test_txn =
          * transaction being freed twice. *)
         check_raises "expecting Map_full from txn_commit" Map_full begin fun () ->
           for i=100 to max_int do
-            Map.(put ~flags:Flags.append) map i "blub" (* Calls Txn.trivial *)
+            Map.(add ~flags:Flags.append) map i "blub" (* Calls Txn.trivial *)
           done
         end;
         let map_size = Env.(info env).map_size in
         Env.set_map_size env (2 * map_size);
         check pass "resized map" () ();
-        Map.put map 1 "blub";
-        check pass "put successfull" () ();
+        Map.add map 1 "blub";
+        check pass "add successfull" () ();
         Map.drop ~delete:false map;
     end
-  ; "MAP_FULL triggered by Map.put", `Slow, begin fun () ->
+  ; "MAP_FULL triggered by Map.add", `Slow, begin fun () ->
         check_raises "expecting Map_full from Txn.go" Map_full begin fun () ->
           ignore @@ Txn.go Rw env @@ fun txn ->
           let bulk = String.make 1024 '#' in
           for i=100 to max_int do
-            Map.(put ~txn ~flags:Flags.append) map i bulk
+            Map.(add ~txn ~flags:Flags.append) map i bulk
           done
         end;
-        Map.put map 1 "blub";
-        check pass "put successfull" () ();
+        Map.add map 1 "blub";
+        check pass "add successfull" () ();
         Map.drop ~delete:false map;
     end
   ; "MAP_FULL not passed on to Txn.go", `Slow, begin fun () ->
         check_raises "expecting MDB_BAD_TXN from Txn.go" (Error ~-30782) begin fun () ->
           ignore @@ Txn.go Rw env @@ fun txn ->
           let bulk = String.make 1024 '#' in
-          check_raises "expecting Map_full from Map.put" Map_full @@ fun () ->
+          check_raises "expecting Map_full from Map.add" Map_full @@ fun () ->
           for i=100 to max_int do
-            Map.(put ~txn ~flags:Flags.append) map i bulk
+            Map.(add ~txn ~flags:Flags.append) map i bulk
           done
         end;
-        Map.put map 1 "blub";
-        check pass "put successfull" () ();
+        Map.add map 1 "blub";
+        check pass "add successfull" () ();
       end
   ]
 

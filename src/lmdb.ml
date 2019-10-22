@@ -369,17 +369,14 @@ module Map = struct
 
   module Flags = Mdb.PutFlags
 
-  let put map ?txn ?(flags=Flags.none) k v =
-    let key = map.key and value = map.value in
+  let put_raw_key map ?txn ?(flags=Flags.none) ka v =
     if Conv.Flags.(test dup_sort map.flags)
     then begin
-      let ka = key.serialise Bigstring.create k in
-      let va = value.serialise Bigstring.create v in
+      let va = map.value.serialise Bigstring.create v in
       Txn.trivial Rw ?txn map.env @@ fun txn ->
       Mdb.put txn map.dbi ka va flags
     end
     else begin
-      let ka = key.serialise Bigstring.create k in
       Txn.trivial Rw ?txn map.env @@ fun txn ->
       let va_opt = ref Mdb.Block_option.none in
       let alloc len =
@@ -389,7 +386,7 @@ module Map = struct
         va_opt := Mdb.Block_option.some va;
         va
       in
-      let va = value.serialise alloc v in
+      let va = map.value.serialise alloc v in
       if Mdb.Block_option.is_some !va_opt
       then begin
         if Mdb.Block_option.get_unsafe !va_opt != va then
@@ -397,6 +394,26 @@ module Map = struct
       end
       else Mdb.put txn map.dbi ka va flags
     end
+
+  let add map ?txn ?(flags=Flags.none) k v =
+    let flags =
+      if Conv.Flags.(test dup_sort map.flags)
+      then flags
+      else Flags.(flags + no_overwrite)
+    in
+    let ka = map.key.serialise Bigstring.create k in
+    put_raw_key map ?txn ~flags ka v
+
+  let set map ?txn ?flags k v =
+    let ka = map.key.serialise Bigstring.create k in
+    if Conv.Flags.(test dup_sort map.flags)
+    then begin
+      Txn.trivial Rw ?txn map.env @@ fun txn ->
+      (try Mdb.del txn map.dbi ka Mdb.Block_option.none with Not_found -> ());
+      put_raw_key map ~txn ?flags ka v
+    end
+    else
+      put_raw_key map ?txn ?flags ka v
 
   let remove map ?txn ?value:v k =
     let key = map.key and value = map.value in
@@ -667,10 +684,34 @@ module Cursor = struct
       else Mdb.cursor_put cursor ka va flags
     end
 
-  let put cursor ?(flags=Flags.none) k v =
-    let key = cursor.map.key in
-    let ka = key.serialise Bigstring.create k in
+  let set { cursor ; map } ?(flags=Flags.none) k v =
+    let ka = map.key.serialise Bigstring.create k in
+    if Conv.Flags.(test dup_sort map.flags)
+    then begin
+      match
+        Mdb.cursor_get cursor
+          (Mdb.Block_option.some ka)
+          Mdb.Block_option.none
+          Ops.set
+      with
+      | exception Not_found -> ()
+      | _, _ -> Mdb.cursor_del cursor Flags.no_dup_data
+    end;
+    let va = map.value.serialise Bigstring.create v in
+    Mdb.cursor_put cursor ka va flags
+
+  let add cursor ?(flags=Flags.none) k v =
+    let flags =
+      if Conv.Flags.(test dup_sort cursor.map.flags)
+      then flags
+      else Flags.(flags + no_overwrite)
+    in
+    let ka = cursor.map.key.serialise Bigstring.create k in
     put_raw_key cursor ~flags ka v
+
+  let remove ?(all=false) cursor =
+    Mdb.cursor_del cursor.cursor
+      (if all then Flags.no_dup_data else Flags.none)
 
   let replace cursor v =
     (* mdb_put mdb_current is supposed to replace the current _value_.
@@ -682,10 +723,6 @@ module Cursor = struct
         Ops.get_current
     in
     put_raw_key cursor ~flags:Flags.current ka v
-
-  let remove ?(all=false) cursor =
-    Mdb.cursor_del cursor.cursor
-      (if all then Flags.no_dup_data else Flags.none)
 
   let fold_prim init step ?cursor ~f acc map =
     let fold cursor =
