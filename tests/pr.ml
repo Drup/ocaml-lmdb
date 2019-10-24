@@ -3,6 +3,7 @@ open Lmdb
 let test env =
   "Problem reports",
   [ "#15", `Slow, begin fun () ->
+        Env.set_map_size env 104857600;
         let t = Map.(create Nodup ~key:Conv.string ~value:Conv.string) env ~name:"pr#15" in
         (* Put some entries *)
         let rec put_count t = function
