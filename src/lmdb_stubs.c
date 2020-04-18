@@ -20,7 +20,6 @@
 #include <lmdb.h>
 
 #define CAML_NAME_SPACE
-#define CAML_SAFE_STRING
 #include <caml/mlvalues.h>
 #include <caml/threads.h>
 #include <caml/alloc.h>
