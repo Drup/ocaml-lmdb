@@ -10,10 +10,11 @@ New implementation (which can use special LMDB features such as multi-values) ca
 Please consult the [documentation][doc] and a [simple example](tests/simple_db.ml).
 
 ```ocaml
-open Lmdb
-let env = Env.create "mydb"
-let db = Db.create ~create:true env "Camelidae" in
-Db.put db "Bactrian camel" "Elegant and beautiful animal with two humps."
+let open Lmdb in
+let env = Env.(create Rw ~flags:Flags.no_subdir ~max_maps:1) "mydb" in
+let map = Map.create Nodup ~key:Conv.string ~value:Conv.string
+	    ~name:"Camelidae" env in
+Map.add map "Bactrian camel" "Elegant and beautiful animal with two humps."
 ```
 
 [lmdb]: http://symas.com/mdb/#overview
