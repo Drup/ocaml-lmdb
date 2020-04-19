@@ -14,6 +14,7 @@ and lib_candidates =
   [ "/lib"
   ; "/usr/lib"
   ; "/usr/local/lib"
+  ; "/usr/lib/x86_64-linux-gnu/"
   ; "/opt/lib" ]
 
 
