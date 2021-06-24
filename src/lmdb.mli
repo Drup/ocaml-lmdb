@@ -254,7 +254,7 @@ end
 (** Key-value maps. *)
 module Map : sig
   (** A handle for a map from keys of type ['key] to values of type ['value].
-      The map may support only a single value per key ([[ `Dup ]])
+      The map may support only a single value per key ([[ `Uni ]])
       or multiple values per key ([[ `Dup | `Uni ]]). *)
   type ('key, 'value, -'dup) t
     constraint 'perm = [< `Read | `Write ]
