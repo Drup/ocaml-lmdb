@@ -160,6 +160,15 @@ let test_map =
       Map.remove unimap 4285;
       check_raises "removed" Not_found (fun () -> Map.get unimap 4285 |> ignore)
     end
+  ; "close", `Quick, begin fun () ->
+      let map =
+        Map.(create Nodup
+             ~key:Conv.int32_be_as_int
+             ~value:Conv.int32_be_as_int
+             ~name:"close") env
+      in
+      Map.close map
+    end
   ]
 ;;
 

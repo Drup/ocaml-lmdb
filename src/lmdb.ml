@@ -349,7 +349,9 @@ module Map = struct
   and open_existing dup ~key ~value ?txn ?name env =
     create Ro dup ~key ~value ?txn ?name env
 
-  let close {env; dbi; _} = Mdb.dbi_close env dbi
+  let close ({env; dbi; _} as map) =
+    map.dbi <- Mdb.invalid_dbi;
+    Mdb.dbi_close env dbi
 
   let stat ?txn {env; dbi; _} =
     Txn.trivial Ro ?txn env @@ fun txn ->
