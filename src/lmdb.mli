@@ -301,6 +301,10 @@ module Map : sig
     Env.t ->
     ('key, 'value, 'dup) t
 
+  (** [close map] closes and invalidates the [map] handle.
+      Normalle unnecessary. Use with care. See the lmdb manual. *)
+  val close : _ t -> unit
+
   (** [env map] returns the environment of [map]. *)
   val env : _ t -> Env.t
 
