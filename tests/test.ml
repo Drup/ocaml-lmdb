@@ -167,7 +167,9 @@ let test_map =
              ~value:Conv.int32_be_as_int
              ~name:"close") env
       in
-      Map.close map
+      Map.close map;
+      check_raises "closed map" (Invalid_argument "Lmdb")
+        (fun () -> Map.set map 0 0)
     end
   ]
 ;;
