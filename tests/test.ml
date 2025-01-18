@@ -640,6 +640,36 @@ let test_txn =
           | "GC" -> Gc.full_major ()
           | _ -> ()
     end
+  ; "DBS_FULL - recycle ro map slots", `Quick, begin fun () ->
+      for i=0 to 19 do
+          Map.(create Nodup
+             ~key:Conv.int32_be_as_int
+             ~value:Conv.int32_be_as_int
+             ~name:("recycle_" ^ string_of_int i)) env
+          |> Map.close
+      done;
+      let rec exhaust ~txn maps i =
+        match
+          Map.(create Nodup ~txn
+             ~key:Conv.int32_be_as_int
+             ~value:Conv.int32_be_as_int)
+             ~name:("recycle_" ^ string_of_int i)
+             env;
+        with
+        | map -> exhaust ~txn (map :: maps) (i+1)
+        | exception e ->
+          check (testable Fmt.exn (=)) "max_maps exhausted"
+            (Error ~-30791 (* MDB_DBS_FULL *)) e;
+          maps
+      in
+      ignore @@ Txn.go Rw env begin fun txn ->
+        let maps = exhaust ~txn [] 0 in
+        let n = List.length maps in
+        List.iter Map.close maps;
+        let maps = exhaust ~txn [] n in
+        List.iter Map.close maps
+      end
+    end
   ]
 
 let () =
