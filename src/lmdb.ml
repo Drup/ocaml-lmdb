@@ -338,11 +338,7 @@ module Map = struct
       end;
       dbi, flags
     in
-    let db_t = { env; dbi; flags; key; value } in
-    Gc.finalise
-      (fun {env; dbi; _} -> if dbi != Mdb.invalid_dbi then Mdb.dbi_close env dbi)
-      db_t;
-    db_t
+    { env; dbi; flags; key; value }
 
   let create dup ~key ~value ?txn ?name env =
     create Rw dup ~key ~value ?txn ?name env
