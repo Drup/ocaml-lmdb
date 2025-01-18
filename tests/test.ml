@@ -597,14 +597,13 @@ let test_regress =
           (*
             Without cleanup later map creations will obviously fail with
             MDB_DBS_FULL.
-            Either one of ["close";"GC"] will sufficiently clean up.
           *)
           match "close" with
           | "close" -> List.iter Map.close maps
           | "GC" -> Gc.full_major ()
           | _ -> ()
     end
-  ; "exhaust max_maps abort txn", `Quick, begin fun () ->
+  ; "abort txn with new map handles", `Quick, begin fun () ->
       let exception Maps of (int,int,[`Uni]) Map.t list in
       let rec exhaust ~txn maps i =
         match
@@ -621,12 +620,6 @@ let test_regress =
       in
       try ignore @@ Txn.go Rw env (fun txn -> exhaust ~txn [] 0)
       with Maps maps ->
-      (*
-        Since txn is aborted there should be no sideeffects.
-        Still without cleanup threaded GC stress will later on fail with
-        Error "Lmdb".
-        Either one of ["close";"GC"] will sufficiently clean up.
-      *)
       begin match "none" with
         | "close" -> List.iter Map.close maps
         | "GC" -> Gc.full_major ()
