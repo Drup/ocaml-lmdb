@@ -599,10 +599,15 @@ let test_regress =
         Error "Lmdb".
         Either one of ["close";"GC"] will sufficiently clean up.
       *)
-      match "close" with
+      begin match "none" with
         | "close" -> List.iter Map.close maps
         | "GC" -> Gc.full_major ()
         | _ -> ()
+      end;
+      let map = Map.(create Nodup ~key:Conv.int32_le_as_int ~value:Conv.string) env ~name:"trigger_error" in
+      ignore @@ Txn.go Rw env Txn.abort;
+      Gc.full_major ();
+      Map.drop ~delete:true map
     end
   ]
 
