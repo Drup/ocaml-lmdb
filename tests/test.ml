@@ -603,6 +603,43 @@ let test_txn =
         Map.add map 1 "blub";
         check pass "add successfull" () ();
       end
+  ; "DBS_FULL", `Quick, begin fun () ->
+      let rec exhaust ~txn maps i =
+        match
+          Map.(create Nodup ~txn
+             ~key:Conv.int32_be_as_int
+             ~value:Conv.int32_be_as_int
+             ~name:("exhaust_" ^ string_of_int i)) env;
+        with
+        | map -> exhaust ~txn (map :: maps) (i+1)
+        | exception e ->
+          (*
+          List.iter Map.close maps;
+             lmdb manual says:
+               Do not close a handle if an existing transaction has modified
+               its database.
+             This is true for us here, too, since we just created the
+             databases. Committing the transaction after closing the handles
+             would fail with MDB_BAD_DBI, because mdb_txn_commit() would try to
+             commit the map handles we already closed. The story might be
+             different for map handles that were used read-only.
+          *)
+          check (testable Fmt.exn (=)) "max_maps exhausted"
+            (Error ~-30791 (* MDB_DBS_FULL *)) e;
+          maps
+      in
+      match Txn.go Rw env (fun txn -> exhaust ~txn [] 0) with
+      | None -> ()
+      | Some maps ->
+          (*
+            Without cleanup later map creations will obviously fail with
+            MDB_DBS_FULL.
+          *)
+          match "close" with
+          | "close" -> List.iter Map.close maps
+          | "GC" -> Gc.full_major ()
+          | _ -> ()
+    end
   ]
 
 let () =
