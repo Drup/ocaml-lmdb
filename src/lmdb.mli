@@ -124,7 +124,7 @@ module Txn : sig
 
       Here is an example incrementing a value atomically:
 {[
-go rw env begin fun txn ->
+go Rw env begin fun txn ->
   let v = Map.get ~txn k in
   Map.add ~txn k (v+1) ;
   v
