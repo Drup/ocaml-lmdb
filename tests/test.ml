@@ -538,16 +538,71 @@ let test_regress =
         (Cursor.current_all cursor);
     end
   ; "exhaust max_maps", `Quick, begin fun () ->
-      let rec exhaust ~txn i =
-        ignore @@ Map.(create Nodup ~txn
-           ~key:Conv.int32_be_as_int
-           ~value:Conv.int32_be_as_int
-           ~name:("exhaust_" ^ string_of_int i)) env;
-        exhaust ~txn (i+1)
+      let rec exhaust ~txn maps i =
+        match
+          Map.(create Nodup ~txn
+             ~key:Conv.int32_be_as_int
+             ~value:Conv.int32_be_as_int
+             ~name:("exhaust_" ^ string_of_int i)) env;
+        with
+        | map -> exhaust ~txn (map :: maps) (i+1)
+        | exception e ->
+          (*
+          List.iter Map.close maps;
+             lmdb manual says:
+               Do not close a handle if an existing transaction has modified
+               its database.
+             This is true for us here, too, since we just created the
+             databases. Committing the transaction after closing the handles
+             would fail with MDB_BAD_DBI, because it would either try to close
+             or commit the map handles.
+             The story might be different for map handles that were used
+             read-only.
+          *)
+          check (testable Fmt.exn (=)) "max_maps exhausted"
+            (Error ~-30791 (* MDB_DBS_FULL *)) e;
+            maps
       in
-      check_raises "max_maps exhausted" (Error ~-30791 (* MDB_DBS_FULL *))
-        (fun () -> Txn.go Rw env (fun txn -> exhaust ~txn 0) |> ignore);
-      Gc.full_major ()
+      match Txn.go Rw env (fun txn -> exhaust ~txn [] 0) with
+      | None -> ()
+      | Some maps ->
+          (*
+            Without cleanup later map creations will obviously fail with
+            MDB_DBS_FULL.
+            Either one of ["close";"GC"] will sufficiently clean up.
+          *)
+          match "close" with
+          | "close" -> List.iter Map.close maps
+          | "GC" -> Gc.full_major ()
+          | _ -> ()
+    end
+  ; "exhaust max_maps abort txn", `Quick, begin fun () ->
+      let exception Maps of (int,int,[`Uni]) Map.t list in
+      let rec exhaust ~txn maps i =
+        match
+          Map.(create Nodup ~txn
+             ~key:Conv.int32_be_as_int
+             ~value:Conv.int32_be_as_int
+             ~name:("exhaust_" ^ string_of_int i)) env;
+        with
+        | map -> exhaust ~txn (map :: maps) (i+1)
+        | exception e ->
+          check (testable Fmt.exn (=)) "max_maps exhausted"
+            (Error ~-30791 (* MDB_DBS_FULL *)) e;
+            raise (Maps maps)
+      in
+      try ignore @@ Txn.go Rw env (fun txn -> exhaust ~txn [] 0)
+      with Maps maps ->
+      (*
+        Since txn is aborted there should be no sideeffects.
+        Still without cleanup threaded GC stress will later on fail with
+        Error "Lmdb".
+        Either one of ["close";"GC"] will sufficiently clean up.
+      *)
+      match "close" with
+        | "close" -> List.iter Map.close maps
+        | "GC" -> Gc.full_major ()
+        | _ -> ()
     end
   ]
 
