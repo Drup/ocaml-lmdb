@@ -298,8 +298,7 @@ module Map : sig
     value       :'value Conv.t ->
     ?txn        :[> `Read ] Txn.t ->
     ?name       :string ->
-    Env.t ->
-    ('key, 'value, 'dup) t
+    Env.t -> ('key, 'value, 'dup) t
 
   (** [close map] closes and invalidates the [map] handle.
       Normalle unnecessary. Use with care. See the lmdb manual. *)
