@@ -537,6 +537,18 @@ let test_regress =
       check (pair string (array string)) "dup entries" ("dup entry", [|"1";"2"|])
         (Cursor.current_all cursor);
     end
+  ; "exhaust max_maps", `Quick, begin fun () ->
+      let rec exhaust ~txn i =
+        ignore @@ Map.(create Nodup ~txn
+           ~key:Conv.int32_be_as_int
+           ~value:Conv.int32_be_as_int
+           ~name:("exhaust_" ^ string_of_int i)) env;
+        exhaust ~txn (i+1)
+      in
+      check_raises "max_maps exhausted" (Error ~-30791 (* MDB_DBS_FULL *))
+        (fun () -> Txn.go Rw env (fun txn -> exhaust ~txn 0) |> ignore);
+      Gc.full_major ()
+    end
   ]
 
 let test_txn =
