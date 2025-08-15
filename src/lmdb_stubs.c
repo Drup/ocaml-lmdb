@@ -15,7 +15,12 @@
  */
 
 
+#ifdef _WIN32
+#include <malloc.h>
+#else
 #include <alloca.h>
+#endif
+
 #include <string.h>
 #include <errno.h>
 #include <lmdb.h>
