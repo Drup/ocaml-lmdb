@@ -1,0 +1,160 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    strategy:
+      fail-fast: false
+      matrix:
+        # Some platforms don't have lmdb in their package manager in which
+        # case they are marked as 'source'. In that case, we make sure to
+        # build lmdb from source and install it ourselves.
+        #
+        # Otherwise, we just use opam's depext feature which delegates the
+        # task of install lmdb to the platforms designated package manager.
+        include:
+          # OCaml 5:
+          ## ubuntu (x86)
+          - ocaml-compiler: 5.3.x
+            os: ubuntu-latest
+            lmdb: pkg
+            run_tests: true
+            cc: gcc
+          ## macos (Apple Silicon)
+          - ocaml-compiler: 5.3.x
+            os: macos-latest
+            lmdb: pkg
+            run_tests: true
+            cc: clang
+          ## macos (x86)
+          - ocaml-compiler: 5.3.x
+            os: macos-13
+            lmdb: pkg
+            run_tests: true
+            cc: clang
+          ## MSVC
+          - ocaml-compiler: ocaml-compiler.5.3.0,system-msvc
+            os: windows-latest
+            lmdb: source 
+            run_tests: true
+            cc: cl
+          ## mingw
+          - ocaml-compiler: ocaml-base-compiler.5.3.0,system-mingw
+            os: windows-latest
+            lmdb: source
+            run_tests: true
+            cc: gcc
+          # OCaml 4:
+          ## ubuntu (x86)
+          - ocaml-compiler: 4.14.x
+            os: ubuntu-latest
+            lmdb: pkg
+            run_tests: true
+            cc: gcc
+          ## ubuntu (x86-32)
+          - ocaml-compiler: "ocaml-variants.4.14.2+options,ocaml-option-32bit"
+            os: ubuntu-latest
+            lmdb: source
+            run_tests: true
+            cc: gcc
+            c_flags: '-m32'
+          ## macos (Apple Silicon)
+          - ocaml-compiler: 4.14.x
+            os: macos-latest
+            lmdb: pkg
+            run_tests: true
+            cc: clang
+          # OCaml 4.03:
+          ## ubuntu (x86)
+          - ocaml-compiler: 4.03.x
+            os: ubuntu-latest
+            lmdb: pkg
+            cc: gcc
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup C++ toolchain
+        uses: aminya/setup-cpp@v1
+        with:
+          compiler: ${{ matrix.cc }}
+
+      - name: Use OCaml ${{ matrix.ocaml-compiler }}
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: ${{ matrix.ocaml-compiler }}
+
+      - name: Install lmdb (Unix)
+        if: ${{ matrix.lmdb == 'source' && matrix.os != 'windows-latest' }}
+        run: |
+          git clone https://github.com/LMDB/lmdb.git --depth 1
+          mkdir -p $GITHUB_WORKSPACE/lmdb-install/include
+          mkdir -p $GITHUB_WORKSPACE/lmdb-install/lib
+          cp lmdb/libraries/liblmdb/lmdb.h $GITHUB_WORKSPACE/lmdb-install/include
+          # Build LMDB as shared library
+          ${{ matrix.cc }} ${{ matrix.c_flags }} -O2 -fPIC -I$GITHUB_WORKSPACE/lmdb-install/include \
+            -c lmdb/libraries/liblmdb/mdb.c lmdb/libraries/liblmdb/midl.c
+          ${{ matrix.cc }} ${{ matrix.c_flags }} -shared -o \
+            $GITHUB_WORKSPACE/lmdb-install/lib/liblmdb.so mdb.o midl.o
+          echo "CPATH=$GITHUB_WORKSPACE/lmdb-install/include" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=$GITHUB_WORKSPACE/lmdb-install/lib" >> $GITHUB_ENV
+
+      - name: Install lmdb (Windows MSVC)
+        if: ${{ matrix.lmdb == 'source' && matrix.cc == 'cl' && matrix.os == 'windows-latest' }}
+        run: |
+          git clone https://github.com/LMDB/lmdb.git --depth 1
+          mkdir -p $env:GITHUB_WORKSPACE/lmdb-install/include
+          mkdir -p $env:GITHUB_WORKSPACE/lmdb-install/lib
+          cp lmdb/libraries/liblmdb/lmdb.h $env:GITHUB_WORKSPACE/lmdb-install/include
+          # Build LMDB as DLL with MSVC cl, link against advapi32
+          cl /I"$env:GITHUB_WORKSPACE/lmdb-install/include" `
+             /LD lmdb\libraries\liblmdb\mdb.c lmdb\libraries\liblmdb\midl.c `
+             /Fe:"$env:GITHUB_WORKSPACE/lmdb-install/lib/lmdb.dll" `
+             /link /implib:"$env:GITHUB_WORKSPACE/lmdb-install/lib/lmdb.lib" advapi32.lib
+          echo "CPATH=$env:GITHUB_WORKSPACE/lmdb-install/include" >> $env:GITHUB_ENV
+          echo "LIBRARY_PATH=$env:GITHUB_WORKSPACE/lmdb-install/lib" >> $env:GITHUB_ENV
+
+      - name: Install lmdb (Windows MinGW)
+        if: ${{ matrix.lmdb == 'source' && matrix.cc == 'gcc' && matrix.os == 'windows-latest' }}
+        run: |
+          git clone https://github.com/LMDB/lmdb.git --depth 1
+          mkdir -p $GITHUB_WORKSPACE/lmdb-install/include
+          mkdir -p $GITHUB_WORKSPACE/lmdb-install/lib
+          cp lmdb/libraries/liblmdb/lmdb.h $GITHUB_WORKSPACE/lmdb-install/include
+          # Build LMDB as DLL with MinGW gcc
+          gcc -O2 -I$GITHUB_WORKSPACE/lmdb-install/include `
+            -c lmdb/libraries/liblmdb/mdb.c lmdb/libraries/liblmdb/midl.c
+          gcc -shared -o $GITHUB_WORKSPACE/lmdb-install/lib/liblmdb.dll mdb.o midl.o
+          echo "CPATH=$env:GITHUB_WORKSPACE/lmdb-install/include" >> $env:GITHUB_ENV
+          echo "LIBRARY_PATH=$env:GITHUB_WORKSPACE/lmdb-install/lib" >> $env:GITHUB_ENV
+
+      - name: Install lmdb (pkg)
+        if: ${{ matrix.lmdb == 'pkg' }}
+        run: opam install . --deps-only --depext-only
+
+      - name: Install OCaml deps
+        run: opam install . --deps-only --no-depexts
+
+      - name: Build
+        run: opam exec -- dune build
+
+      - name: Install test deps
+        if: ${{ matrix.run_tests }}
+        run: opam install . --deps-only --with-test --no-depexts
+
+      - name: Test
+        if: ${{ matrix.run_tests }}
+        run: opam exec -- dune runtest
