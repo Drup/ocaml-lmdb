@@ -85,19 +85,27 @@ const value *exn_exists;
 const value *exn_map_full;
 const value *exn_error;
 
-
 void mdbs_assert_func(MDB_env *env, const char *msg) {
-  const char *path;
-  mdb_env_get_path(env, &path);
-  char text[39 + strlen(path) + strlen(msg)];
+    const char *path = NULL;
+    mdb_env_get_path(env, &path);
+    size_t required_size = 39 + strlen(path) + strlen(msg);
 
-  strcpy(text, "Lmdb backend assertion failure in ");
-  strcat(text, path);
-  strcat(text, " at ");
-  strcat(text, msg);
+    char *text = (char *)malloc(required_size);
+    if (!text) {
+      caml_acquire_runtime_system();
+      caml_failwith("Memory allocation failed in mdbs_assert_func");
+      return;
+    }
 
-  caml_acquire_runtime_system();
-  caml_failwith(text);
+    snprintf(text, required_size,
+      "Lmdb backend assertion failure in %s at %s",
+      path ? path : "(unknown path)",
+      msg);
+
+    caml_acquire_runtime_system();
+    caml_failwith(text);
+
+    free(text);
 }
 
 CAMLprim value mdbs_init(value unit)
@@ -186,15 +194,20 @@ CAMLprim value mdbs_env_create(value unit)
 
 CAMLprim value mdbs_env_open(value env, value path, value flags, value mode)
 {
-  char cpath[caml_string_length(path) + 1];
-  memcpy(cpath, String_val(path), sizeof(cpath));
+  size_t cpath_length = caml_string_length(path);
+  char *cpath = (char*)malloc(cpath_length + 1);
+  if (!cpath) caml_failwith("Memory allocation failed in mdbs_env_open");
+
+  memcpy(cpath, String_val(path), cpath_length);
+  cpath[cpath_length] = '\0';
 
   mdbs_err_rel(mdb_env_open(
-	unhide(env),
-	cpath,
-	Unsigned_int_val(flags),
-	Int_val(mode)));
+  unhide(env),
+  cpath,
+  Unsigned_int_val(flags),
+  Int_val(mode)));
 
+  free(cpath);
   return Val_unit;
 }
 
@@ -343,14 +356,19 @@ CAMLprim value mdbs_env_info(value env)
 
 CAMLprim value mdbs_env_copy2(value env, value path, value flags)
 {
-  char cpath[caml_string_length(path) + 1];
-  memcpy(cpath, String_val(path), sizeof(cpath));
+  size_t cpath_length = caml_string_length(path);
+  char *cpath = (char*)malloc(cpath_length + 1);
+  if (!cpath) caml_failwith("Memory allocation failed in mdbs_env_open");
+
+  memcpy(cpath, String_val(path), cpath_length);
+  cpath[cpath_length] = '\0';
 
   mdbs_err_rel(mdb_env_copy2(
-	unhide(env),
-	cpath,
-	Unsigned_int_val(flags)));
+  unhide(env),
+  cpath,
+  Unsigned_int_val(flags)));
 
+  free(cpath);
   return Val_unit;
 }
 
@@ -482,12 +500,16 @@ CAMLprim value mdbs_txn_abort(value txn)
 CAMLprim value mdbs_dbi_open(value txn, value name, value flags)
 {
   MDB_dbi dbi;
-
-  char cname[Is_block(name) ? caml_string_length(Field(name, 0)) + 1 : 0];
+  char *cname = NULL;
+  size_t cname_length = 0;
 
   if (Is_block(name)) {
     CAMLassert(Tag_val(Field(name,0)) == String_tag);
-    memcpy(cname, String_val(Field(name,0)), sizeof(cname));
+    cname_length = caml_string_length(Field(name,0));
+    cname = (char *)malloc(cname_length + 1);
+    if (!cname) caml_failwith("Memory allocation failed in mdbs_dbi_open");
+    memcpy(cname, String_val(Field(name,0)), cname_length);
+    cname[cname_length] = '\0';
   }
   else
     CAMLassert(Int_val(name) == 0);
@@ -498,6 +520,7 @@ CAMLprim value mdbs_dbi_open(value txn, value name, value flags)
 	Unsigned_int_val(flags),
 	&dbi));
 
+  free(cname);
   return Val_int(dbi);
 }
 
