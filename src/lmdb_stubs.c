@@ -15,6 +15,7 @@
  */
 
 
+#include <alloca.h>
 #include <string.h>
 #include <errno.h>
 #include <lmdb.h>
@@ -89,7 +90,7 @@ const value *exn_error;
 void mdbs_assert_func(MDB_env *env, const char *msg) {
   const char *path;
   mdb_env_get_path(env, &path);
-  char text[39 + strlen(path) + strlen(msg)];
+  char *text = alloca(39 + strlen(path) + strlen(msg));
 
   strcpy(text, "Lmdb backend assertion failure in ");
   strcat(text, path);
@@ -186,8 +187,9 @@ CAMLprim value mdbs_env_create(value unit)
 
 CAMLprim value mdbs_env_open(value env, value path, value flags, value mode)
 {
-  char cpath[caml_string_length(path) + 1];
-  memcpy(cpath, String_val(path), sizeof(cpath));
+  size_t cpath_length = caml_string_length(path) + 1;
+  char *cpath = alloca(cpath_length);
+  memcpy(cpath, String_val(path), cpath_length);
 
   mdbs_err_rel(mdb_env_open(
 	unhide(env),
@@ -343,8 +345,9 @@ CAMLprim value mdbs_env_info(value env)
 
 CAMLprim value mdbs_env_copy2(value env, value path, value flags)
 {
-  char cpath[caml_string_length(path) + 1];
-  memcpy(cpath, String_val(path), sizeof(cpath));
+  size_t cpath_length = caml_string_length(path) + 1;
+  char *cpath = alloca(cpath_length);
+  memcpy(cpath, String_val(path), cpath_length);
 
   mdbs_err_rel(mdb_env_copy2(
 	unhide(env),
@@ -483,18 +486,24 @@ CAMLprim value mdbs_dbi_open(value txn, value name, value flags)
 {
   MDB_dbi dbi;
 
-  char cname[Is_block(name) ? caml_string_length(Field(name, 0)) + 1 : 0];
+  size_t cname_length;
+  char *cname;
 
   if (Is_block(name)) {
     CAMLassert(Tag_val(Field(name,0)) == String_tag);
-    memcpy(cname, String_val(Field(name,0)), sizeof(cname));
+    cname_length = caml_string_length(Field(name, 0)) + 1;
+    cname = alloca(cname_length);
+    memcpy(cname, String_val(Field(name,0)), cname_length);
   }
-  else
+  else {
     CAMLassert(Int_val(name) == 0);
+    cname_length = 0;
+    cname = NULL;
+  }
 
   mdbs_err_rel(mdb_dbi_open(
 	unhide(txn),
-	Is_block(name) ? cname : NULL,
+	cname,
 	Unsigned_int_val(flags),
 	&dbi));
 
