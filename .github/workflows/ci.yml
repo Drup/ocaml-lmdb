@@ -68,6 +68,7 @@ jobs:
             run_tests: true
             cc: gcc
             c_flags: '-m32'
+            c_deps: true
           ## macos (Apple Silicon)
           - ocaml-compiler: 4.14.x
             os: macos-latest
@@ -96,6 +97,14 @@ jobs:
         uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
+
+      - name: Install C build deps
+        if: ${{ matrix.c_deps }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+          # 32-bit builds need multilib
+          sudo apt-get install -y gcc-multilib g++-multilib
 
       - name: Install lmdb (Unix)
         if: ${{ matrix.lmdb == 'source' && matrix.os != 'windows-latest' }}
