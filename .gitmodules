@@ -1,0 +1,3 @@
+[submodule "liblmdb"]
+	path = liblmdb
+	url = https://git.openldap.org/openldap/openldap.git
