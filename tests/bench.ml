@@ -1,13 +1,8 @@
 open Lmdb
 
-let env =
-  Env.create Rw
-    ~flags:Env.Flags.(no_subdir + no_sync + write_map + no_lock + no_mem_init)
-    ~map_size:104857600
-    ~max_maps:10
-    "/tmp/lmdb_test.db"
+let test_file = "/tmp/lmdb_test.db"
 
-let benchmark repeat =
+let benchmark env repeat =
   let errors = ref 0 in
 
   let bench name conv_key conv_val key value n =
@@ -15,7 +10,7 @@ let benchmark repeat =
     let bench map cycles =
       let open Map in
       for i=0 to cycles-1 do
-        put map (key i) (value i)
+        add map (key i) (value i)
       done;
       for i=0 to cycles-1 do
         let v = get map (key i) in
@@ -42,9 +37,17 @@ let benchmark repeat =
   !errors
 
 let () =
+  let env =
+    Env.create Rw
+      ~flags:Env.Flags.(no_subdir + no_sync + write_map + no_lock + no_mem_init)
+      ~map_size:104857600
+      ~max_maps:10
+      test_file
+  in
   let n =
     if Array.length Sys.argv = 2
     then int_of_string @@ Sys.argv.(1)
     else 1
   in
-  assert (benchmark n = 0)
+  assert (benchmark env n = 0);
+  Sys.remove test_file
