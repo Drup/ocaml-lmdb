@@ -1,6 +1,7 @@
 (executable
  (name discover)
  (modules discover)
+ (modes (byte exe))
  (libraries str dune.configurator))
 
 (rule

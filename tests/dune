@@ -22,8 +22,8 @@
  )
 )
 
-(alias
- (name bench)
+(rule
+ (alias bench)
  (deps bench.exe (universe))
  (action (run ./bench.exe))
 )

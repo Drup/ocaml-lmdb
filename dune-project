@@ -1,3 +1,3 @@
-(lang dune 1.2)
+(lang dune 3.14)
 (name lmdb)
 (version 1.1)

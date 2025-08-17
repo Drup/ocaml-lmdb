@@ -4,11 +4,14 @@
  (synopsis "Bindings for LMDB, a fast in-file database with ACID transactions")
  (flags :standard -safe-string -thread)
  (libraries unix bigstringaf)
- (c_flags
-  :standard
-  (:include "%{project_root}/cflags.sexp")
-  -Wall -Wextra -Wno-unused-parameter -pedantic
+ (foreign_stubs
+  (language c)
+  (names lmdb_stubs)
+  (flags
+   :standard
+   (:include %{project_root}/cflags.sexp)
+   -Wall -Wextra -Wno-unused-parameter -pedantic
+  )
  )
- (c_names lmdb_stubs)
  (c_library_flags (:include "%{project_root}/clibs.sexp"))
 )
