@@ -316,10 +316,7 @@ module Map : sig
 
   (** [add map key value] adds [value] to [key].
 
-      For a map not supporting duplicates an existing value is overwritten. For
-      a map supporting duplicates the value is added to the key. This is the
-      same as [overwrite] for duplicate maps, but
-      [overwrite ~flags:Flags.no_overwrite] for non-duplicate maps.
+      Existing values are neither removed nor overwritten.
 
       @param flags {!Flags}
       @raise Exists on maps not supporting duplicates if the key already exists.
@@ -418,10 +415,7 @@ end
   (** [add cursor key value] adds [value] to [key] and moves the cursor to
       its position.
 
-      For a map not supporting duplicates an existing value is overwritten. For
-      a map supporting duplicates the value is added to the key. This is the
-      same as [overwrite] for duplicate maps, but
-      [overwrite ~flags:Flags.no_overwrite] for non-duplicate maps.
+      Existing values are neither removed nor overwritten.
 
       @param flags {!Flags}
       @raise Exists on maps not supporting duplicates if the key already exists.
