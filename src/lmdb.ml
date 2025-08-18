@@ -570,36 +570,26 @@ module Cursor = struct
       Mdb.Block_option.none Mdb.Block_option.none
 
   let get_values_multiple cursor len =
-    let value = cursor.map.value in
     assert Conv.Flags.(test dup_fixed cursor.map.flags);
     let _, first = cursor_none cursor Ops.first_dup in
     let size = Bigstring.length first in
-    let values = Array.make len (Obj.magic ()) in
     let _, buf = cursor_none cursor Ops.get_multiple in
-    let rec convert buf off i =
-      if off+size <= Bigstring.length buf
+    let off, buf = ref 0, ref buf in
+    let values =
+      Array.init len @@ fun _ ->
+      if !off = Bigstring.length !buf
       then begin
-        values.(i) <- value.deserialise @@ Bigstring.sub buf ~off ~len:size;
-        convert buf (off+size) (i+1)
+        buf := snd @@ cursor_none cursor Ops.next_multiple;
+        off := 0;
       end
-      else begin
-        assert (off = Bigstring.length buf);
-        i
-      end
+      else
+        assert (!off + size <= Bigstring.length !buf);
+      let v = Bigstring.sub !buf ~off:!off ~len:size in
+      off := !off + size;
+      cursor.map.value.deserialise v
     in
-    let i = convert buf 0 0 in
-    let rec loop i =
-      match
-        try Some (cursor_none cursor Ops.next_multiple) with Not_found -> None
-      with
-      | None -> i
-      | Some (_, buf) ->
-        loop (convert buf 0 i);
-    in
-    let i = loop i in
-    assert (i = len);
-    values
-
+    try cursor_none cursor Ops.next_multiple |> ignore; assert false
+    with Not_found -> values
 
   let get_values_from_first cursor first =
     if not Conv.Flags.(test dup_sort cursor.map.flags)
