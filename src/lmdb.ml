@@ -458,6 +458,8 @@ module Cursor = struct
     constraint 'dup = [< `Dup | `Uni ]
     constraint 'perm = [< `Read | `Write ]
 
+  let txn {cursor; _} = Mdb.cursor_txn cursor
+
   let go perm ?txn (map :_ Map.t) f =
     Txn.trivial perm map.env ?txn @@ fun t ->
     let cursor =

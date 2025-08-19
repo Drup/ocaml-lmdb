@@ -282,6 +282,8 @@ module Ops = struct
   let set_range       = set_range
   (* let prev_multiple  = prev_multiple - only since lmdb 0.9.19 *)
 end
+external cursor_txn : cursor -> txn
+  = "mdbs_cursor_txn"
 external cursor_open : txn -> dbi -> cursor
   = "mdbs_cursor_open"
 external cursor_close : cursor -> unit

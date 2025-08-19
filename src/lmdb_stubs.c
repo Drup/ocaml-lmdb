@@ -428,6 +428,19 @@ CAMLprim value mdbs_txn_env (value txn)
   return hide(env);
 }
 
+CAMLprim value mdbs_cursor_txn (value cursor)
+{
+  MDB_txn *txn;
+  caml_release_runtime_system();
+  txn = mdb_cursor_txn(unhide(cursor));
+  caml_acquire_runtime_system();
+
+  if (txn == NULL)
+    caml_invalid_argument("Lmdb.Cursor.txn: invalid cursor handle.");
+
+  return hide(txn);
+}
+
 CAMLprim value mdbs_txn_begin (value env, value parent, value flags)
 {
   MDB_txn *cparent, *txn;

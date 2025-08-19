@@ -407,6 +407,8 @@ end
   val go : 'perm perm -> ?txn:'perm Txn.t -> ('key, 'value, 'dup) Map.t ->
     (('key, 'value, 'perm, 'dup) t -> 'a) -> 'a
 
+  val txn : (_, _, 'perm, _) t -> 'perm Txn.t
+  (** [env txn] returns the transaction of [cursor] *)
 
   (** {2 Modification} *)
 

@@ -254,6 +254,8 @@ module Ops :
     val set_key : t
     val set_range : t
   end
+external cursor_txn : cursor -> txn
+  = "mdbs_cursor_txn"
 external cursor_open : txn -> dbi -> cursor
   = "mdbs_cursor_open"
 external cursor_close : cursor -> unit
