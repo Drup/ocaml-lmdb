@@ -192,8 +192,8 @@ module Block_option :
     val none : 'a t
     external some_unsafe : 'a -> 'a t = "%identity"
     external get_unsafe : 'a t -> 'a = "%identity"
-    val is_some : 'a -> bool
-    val is_none : 'a -> bool
+    val is_some : 'a t -> bool
+    val is_none : 'a t -> bool
     val some : 'a -> 'a t
     val get_exn : 'a t -> 'a
   end
