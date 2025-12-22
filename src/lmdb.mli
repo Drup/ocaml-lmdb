@@ -595,7 +595,7 @@ end
     unit
 
   val iter_rev :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    ?cursor:('key, 'value, [> `Read ], 'dup) t ->
     f:('key -> 'value -> unit) ->
     ('key, 'value, 'dup) Map.t ->
     unit
@@ -621,7 +621,7 @@ end
     unit
 
   val iter_rev_all :
-    ?cursor:('key, 'value, [> `Read ] as 'perm, 'dup) t ->
+    ?cursor:('key, 'value, [> `Read ], 'dup) t ->
     f:('key -> 'value array -> unit) ->
     ('key, 'value, [> `Dup ] as  'dup) Map.t ->
     unit
