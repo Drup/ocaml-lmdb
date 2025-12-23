@@ -599,13 +599,13 @@ module Cursor = struct
     in s
 
   let to_dispenser ?cursor map =
-    to_dispenser_prim first next ?cursor ?txn:None map
+    to_dispenser_prim first next ?cursor map
   let to_dispenser_rev ?cursor map =
-    to_dispenser_prim last prev ?cursor ?txn:None map
+    to_dispenser_prim last prev ?cursor map
   let to_dispenser_all ?cursor map =
-    to_dispenser_prim first_all next_all ?cursor ?txn:None map
+    to_dispenser_prim first_all next_all ?cursor map
   let to_dispenser_rev_all ?cursor map =
-    to_dispenser_prim last_all prev_all ?cursor ?txn:None map
+    to_dispenser_prim last_all prev_all ?cursor map
 
   let fold_left ?cursor ~f acc map =
     to_dispenser ?cursor map |> seq_of_dispenser
@@ -781,13 +781,13 @@ module Map = struct
     Mdb.del txn map.dbi ka va
 
   let to_dispenser ?txn map =
-    Cursor.(to_dispenser_prim first next) ?cursor:None ?txn map
+    Cursor.(to_dispenser_prim first next) ?txn map
   let to_dispenser_rev ?txn map =
-    Cursor.(to_dispenser_prim last prev) ?cursor:None ?txn map
+    Cursor.(to_dispenser_prim last prev) ?txn map
   let to_dispenser_all ?txn map =
-    Cursor.(to_dispenser_prim first_all next_all) ?cursor:None ?txn map
+    Cursor.(to_dispenser_prim first_all next_all) ?txn map
   let to_dispenser_rev_all ?txn map =
-    Cursor.(to_dispenser_prim last_all prev_all) ?cursor:None ?txn map
+    Cursor.(to_dispenser_prim last_all prev_all) ?txn map
 
   let compare_key map ?txn x y =
     let key = map.key in
