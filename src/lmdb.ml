@@ -319,6 +319,7 @@ module Cursor = struct
       (*Printexc.raise_with_backtrace exn bt - since OCaml 4.05 *)
 
   (* Used internally for trivial functions, not exported. *)
+  (*
   let trivial perm ?cursor map f =
     match (cursor :_ t option) with
     | Some cursor ->
@@ -328,6 +329,7 @@ module Cursor = struct
       f cursor
     | None ->
       go perm map f
+   *)
 
   let seek { cursor ; map } k =
     let key = map.key and value = map.value in
@@ -558,66 +560,92 @@ module Cursor = struct
     in
     put_raw_key cursor ~flags:Flags.current ka v
 
-  let fold_prim init step ?cursor ~f acc map =
-    let fold cursor =
-      match init cursor with
-      | exception Not_found -> acc
-      | key, value ->
-        let acc = f acc key value in
-        let rec loop acc =
-          match step cursor
-          with
-          | exception Not_found -> acc
-          | key, value ->
-            let acc = f acc key value in
-            loop acc
-        in loop acc
+  type ('a, 'b, 'c, 'd) state =
+    | Init of ('a, 'b, 'c, 'd) t
+    | Running of ('a, 'b, 'c, 'd) t
+    | Finished
+
+  let to_dispenser_prim init step ?cursor ?txn:parent map =
+    let state =
+      match cursor with
+      | Some cursor ->
+        if cursor.map != map
+        then invalid_arg
+            "Lmdb.Cursor.fold: Got cursor for wrong map";
+        ref (Init cursor)
+      | None ->
+        let txn = Mdb.txn_begin map.env parent Env.Flags.read_only in
+        ref (Init { cursor = Mdb.cursor_open txn map.dbi; map })
     in
-    trivial Ro map ?cursor fold
+    let next c f =
+      try Some (f c) with Not_found ->
+        if cursor = None
+        then begin
+          let txn = Mdb.cursor_txn c.cursor in
+          Mdb.cursor_close c.cursor;
+          Mdb.txn_commit txn;
+        end;
+        state := Finished;
+        None
+    in
+    let dispenser () =
+      match !state with
+      | Init c ->
+        state := Running c;
+        next c init
+      | Running c -> next c step
+      | Finished -> None
+    in
+    dispenser
+
+  (* Seq.of_dispenser only available since OCaml 4.14 *)
+  let seq_of_dispenser d =
+    let rec s () =
+      match d () with
+      | None -> Seq.Nil
+      | Some x -> Seq.Cons (x, s)
+    in s
+
+  let to_dispenser ?cursor map =
+    to_dispenser_prim first next ?cursor ?txn:None map
+  let to_dispenser_rev ?cursor map =
+    to_dispenser_prim last prev ?cursor ?txn:None map
+  let to_dispenser_all ?cursor map =
+    to_dispenser_prim first_all next_all ?cursor ?txn:None map
+  let to_dispenser_rev_all ?cursor map =
+    to_dispenser_prim last_all prev_all ?cursor ?txn:None map
 
   let fold_left ?cursor ~f acc map =
-    fold_prim first next ?cursor ~f acc map
+    to_dispenser ?cursor map |> seq_of_dispenser
+    |> Seq.fold_left (fun a (k,v) -> f a k v) acc
 
   let fold_right ?cursor ~f map acc =
-    let f acc key values = f key values acc in
-    fold_prim last prev ?cursor ~f acc map
+    to_dispenser_rev ?cursor map |> seq_of_dispenser
+    |> Seq.fold_left (fun a (k,v) -> f k v a) acc
 
   let iter ?cursor ~f map =
-    fold_left ?cursor () map ~f:(fun _acc key value -> f key value)
+    to_dispenser ?cursor map |> seq_of_dispenser
+    |> Seq.iter (fun (k,v) -> f k v)
 
   let iter_rev ?cursor ~f map =
-    fold_right ?cursor map () ~f:(fun key value _acc -> f key value)
-
-  let fold_prim_all init step get_all ?cursor ~f acc map =
-    let fold cursor =
-      match init cursor with
-      | exception Not_found -> acc
-      | key, first ->
-        let values = get_all cursor first in
-        let acc = f acc key values in
-        let rec loop acc =
-          match step cursor with
-          | exception Not_found -> acc
-          | key, first ->
-            let values = get_all cursor first in
-            let acc = f acc key values in
-            loop acc
-        in loop acc
-    in
-    trivial Ro ?cursor map fold
+    to_dispenser_rev ?cursor map |> seq_of_dispenser
+    |> Seq.iter (fun (k,v) -> f k v)
 
   let fold_left_all ?cursor ~f acc map =
-    fold_prim_all first next_nodup get_values_from_first ?cursor ~f acc map
+    to_dispenser_all ?cursor map |> seq_of_dispenser
+    |> Seq.fold_left (fun a (k,v) -> f a k v) acc
 
   let fold_right_all ?cursor ~f map acc =
-    let f acc key values = f key values acc in
-    fold_prim_all last prev_nodup get_values_from_last ?cursor ~f acc map
+    to_dispenser_rev_all ?cursor map |> seq_of_dispenser
+    |> Seq.fold_left (fun a (k,v) -> f k v a) acc
 
   let iter_all ?cursor ~f map =
-    fold_left_all ?cursor () map ~f:(fun () key values -> f key values)
+    to_dispenser_all ?cursor map |> seq_of_dispenser
+    |> Seq.iter (fun (k,v) -> f k v)
 
   let iter_rev_all ?cursor ~f map =
-    fold_right_all ?cursor map () ~f:(fun key values () -> f key values)
+    to_dispenser_rev_all ?cursor map |> seq_of_dispenser
+    |> Seq.iter (fun (k,v) -> f k v)
 end
 
 module Map = struct
@@ -760,32 +788,14 @@ module Map = struct
     Txn.trivial Rw ?txn map.env @@ fun txn ->
     Mdb.del txn map.dbi ka va
 
-  let to_dispenser_prim init step ?txn:parent map =
-    let c = ref Mdb.Block_option.none in
-    let finish () =
-      let {Cursor.cursor; _} = Mdb.Block_option.get_exn !c in
-      let txn = Mdb.cursor_txn cursor in
-      Mdb.cursor_close cursor;
-      Mdb.txn_commit txn;
-      None
-    in
-    function () ->
-      if Mdb.Block_option.is_none !c
-      then begin
-        let txn = Mdb.txn_begin map.env parent Env.Flags.read_only in
-        let cursor = { Cursor.cursor = Mdb.cursor_open txn map.dbi; map } in
-        c := Mdb.Block_option.some cursor;
-        try Some (init cursor)
-        with Not_found -> finish ()
-      end
-      else begin
-        let cursor = Mdb.Block_option.get_exn !c in
-        try Some (step cursor)
-        with Not_found -> finish ()
-      end
-
-  let to_dispenser ?txn map = to_dispenser_prim Cursor.first Cursor.next ?txn map
-  let to_dispenser_rev ?txn map = to_dispenser_prim Cursor.last Cursor.prev ?txn map
+  let to_dispenser ?txn map =
+    Cursor.(to_dispenser_prim first next) ?cursor:None ?txn map
+  let to_dispenser_rev ?txn map =
+    Cursor.(to_dispenser_prim last prev) ?cursor:None ?txn map
+  let to_dispenser_all ?txn map =
+    Cursor.(to_dispenser_prim first_all next_all) ?cursor:None ?txn map
+  let to_dispenser_rev_all ?txn map =
+    Cursor.(to_dispenser_prim last_all prev_all) ?cursor:None ?txn map
 
   let compare_key map ?txn x y =
     let key = map.key in

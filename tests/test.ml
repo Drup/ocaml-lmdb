@@ -162,7 +162,7 @@ let test_map =
         begin fun (key,value) ->
           check int "key" !n key;
           check int "values" !n value;
-          n := value * 2;
+          n := !n * 2;
         end;
       check int "last_kv" 805306368 !n
     end
@@ -173,7 +173,66 @@ let test_map =
         begin fun (key,value) ->
           check int "key" !n key;
           check int "values" !n value;
-          n := value / 2;
+          n := !n / 2;
+        end;
+      check int "last_kv" 6 !n
+    end
+  ; "dispenser dup", `Quick, begin fun () ->
+      let kv = ref (12,12) in
+      Map.to_dispenser dupmap_filled |> Seq.of_dispenser
+      |> Seq.iter
+        begin fun (key,value) ->
+          check_kv "kv pair" !kv (key,value);
+          if value*2 <= 536870912
+          then kv := (key, value * 2)
+          else kv := (key * 2, key * 2)
+        end;
+      check_kv "last_kv" (805306368,805306368) !kv
+    end
+  ; "dispenser_rev dup", `Quick, begin fun () ->
+      let kv = ref (402653184, 402653184) in
+      Map.to_dispenser_rev dupmap_filled |> Seq.of_dispenser
+      |> Seq.iter
+        begin fun (key,value) ->
+          check_kv "kv pair" !kv (key,value);
+          let n,m = !kv in
+          if m > n
+          then kv := (n, m / 2)
+          else kv := (n / 2, 402653184)
+        end;
+      check_kv "last_kv" (6,402653184) !kv
+    end
+  ; "dispenser_all", `Quick, begin fun () ->
+      let n = ref 12 in
+      Map.to_dispenser_all dupmap_filled |> Seq.of_dispenser
+      |> Seq.iter
+        begin fun (key,values) ->
+          check int "key" !n key;
+          let rec loop_dup i m =
+            if m <= 536870912 then begin
+              check int "dup" m values.(i);
+              loop_dup (i+1) (m * 2);
+            end
+            else check int "no extra dups" i (Array.length values)
+          in loop_dup 0 key;
+          n := !n * 2;
+        end;
+      check int "last_kv" 805306368 !n
+    end
+  ; "dispenser_rev_all", `Quick, begin fun () ->
+      let n = ref 402653184 in
+      Map.to_dispenser_rev_all dupmap_filled |> Seq.of_dispenser
+      |> Seq.iter
+        begin fun (key,values) ->
+          check int "key" !n key;
+          let rec loop_dup i m =
+            if m <= 536870912 then begin
+              check int "dup" m values.(i);
+              loop_dup (i+1) (m * 2);
+            end
+            else check int "no extra dups" i (Array.length values)
+          in loop_dup 0 key;
+          n := !n / 2;
         end;
       check int "last_kv" 6 !n
     end

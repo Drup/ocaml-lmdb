@@ -307,6 +307,9 @@ module Map : sig
   (** [env map] returns the environment of [map]. *)
   val env : _ t -> Env.t
 
+
+  (** {2 Accessors} *)
+
   (** [get map key] returns the first value associated to [key].
       @raise Not_found if the key is not in the map.
   *)
@@ -346,6 +349,46 @@ module Map : sig
     ?txn:[> `Write ] Txn.t -> ?value:'value -> 'key -> unit
 
 
+  (** {2 Iterators} *)
+
+  (** Dispensers / Generators are iterators meant to be used via
+      [Stdlib.Seq.of_dispenser] or the
+      {{:https://c-cube.github.io/gen/last/gen/Gen/index.html}Gen} module
+
+      They create a read-only (child) transaction and cursor which are
+      automatically closed when the Dispenser is exhausted. Therefore be sure
+      to completely exhaust a dispenser in a timely fashion.
+  *)
+
+  (** [to_dispenser map]
+      returns key-value pairs in order. *)
+  val to_dispenser :
+    ?txn: [> `Read ] Txn.t ->
+    ('key, 'value, _) t ->
+    (unit -> ('key * 'value) option)
+
+  (** [to_dispenser_rev map]
+      returns key-value pairs in reverse order. *)
+  val to_dispenser_rev :
+    ?txn: [> `Read ] Txn.t ->
+    ('key, 'value, _) t ->
+    (unit -> ('key * 'value) option)
+
+  (** [to_dispenser_all map]
+      returns keys with their associated values in order. *)
+  val to_dispenser_all :
+    ?txn: [> `Read ] Txn.t ->
+    ('key, 'value, [> `Dup ]) t ->
+    (unit -> ('key * 'value array) option)
+
+  (** [to_dispenser_all map]
+      returns keys with their associated values in reverse order. *)
+  val to_dispenser_rev_all :
+    ?txn: [> `Read ] Txn.t ->
+    ('key, 'value, [> `Dup ]) t ->
+    (unit -> ('key * 'value array) option)
+
+
   (** {2 Misc} *)
 
   val stat : ?txn: [> `Read ] Txn.t -> ('key, 'value, _) t -> Mdb.stat
@@ -355,12 +398,6 @@ module Map : sig
       and the handle [map] invalidated. *)
   val drop : ?txn: [> `Write ] Txn.t -> ?delete:bool ->
     ('key, 'value, _) t -> unit
-
-  val to_dispenser : ?txn: [> `Read ] Txn.t -> ('key, 'value, _) t ->
-    (unit -> ('key * 'value) option)
-
-  val to_dispenser_rev : ?txn: [> `Read ] Txn.t -> ('key, 'value, _) t ->
-    (unit -> ('key * 'value) option)
 
   (** [compare_key map ?txn a b]
      Compares [a] and [b] as if they were keys in [map]. *)
@@ -590,6 +627,8 @@ end
 
 
   (** {2 Convenient Iterators} *)
+
+  (** @deprecated Since 1.1. Use {!val:Map.to_dispenser} instead *)
 
   (** Call [f] once for each key-value pair.
       Will call [f] multiple times with the same key for duplicates *)
