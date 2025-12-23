@@ -415,7 +415,7 @@ module Cursor = struct
   let cursor_none cursor = Mdb.cursor_get cursor.cursor
       Mdb.Block_option.none Mdb.Block_option.none
 
-  let get_values_multiple cursor len =
+  let get_values_multiple (cursor :(_, _, [> `Read ], [> `Dup ]) t) len =
     assert Conv.Flags.(test dup_fixed cursor.map.flags);
     let _, first = cursor_none cursor Ops.first_dup in
     let size = Bigstring.length first in
@@ -438,39 +438,31 @@ module Cursor = struct
     with Not_found -> values
 
   let get_values_from_first cursor first =
-    if not Conv.Flags.(test dup_sort cursor.map.flags)
-    then [| first |]
+    let len = Mdb.cursor_count cursor.cursor in
+    if len > 1 && Conv.Flags.(test (dup_sort + dup_fixed) cursor.map.flags)
+    then get_values_multiple cursor len
     else begin
-      let len = Mdb.cursor_count cursor.cursor in
-      if len > 1 && Conv.Flags.(test (dup_sort + dup_fixed) cursor.map.flags)
-      then get_values_multiple cursor len
-      else begin
-        let values = Array.make len first in
-        for i = 1 to len - 1 do
-          values.(i) <- next_dup cursor
-        done;
-        values
-      end
+      let values = Array.make len first in
+      for i = 1 to len - 1 do
+        values.(i) <- next_dup cursor
+      done;
+      values
     end
 
   let get_values_from_last cursor last =
-    if not Conv.Flags.(test dup_sort cursor.map.flags)
-    then [| last |]
+    let len = Mdb.cursor_count cursor.cursor in
+    if len > 1 && Conv.Flags.(test (dup_sort + dup_fixed) cursor.map.flags)
+    then begin
+      let values = get_values_multiple cursor len in
+      cursor_none cursor Ops.first_dup |> ignore;
+      values
+    end
     else begin
-      let len = Mdb.cursor_count cursor.cursor in
-      if len > 1 && Conv.Flags.(test (dup_sort + dup_fixed) cursor.map.flags)
-      then begin
-        let values = get_values_multiple cursor len in
-        cursor_none cursor Ops.first_dup |> ignore;
-        values
-      end
-      else begin
-        let values = Array.make len last in
-        for i = len - 2 downto 0 do
-          values.(i) <- prev_dup cursor
-        done;
-        values
-      end
+      let values = Array.make len last in
+      for i = len - 2 downto 0 do
+        values.(i) <- prev_dup cursor
+      done;
+      values
     end
 
   let get_all cursor k =
