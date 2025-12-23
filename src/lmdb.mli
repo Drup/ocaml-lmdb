@@ -195,7 +195,7 @@ module Conv : sig
         interface when appropriate to avoid calls to [malloc] and [memcpy].
 
       @param deserialise
-        The passed {!bigstring} is only valid as long as the current transaction.
+        The passed {!type:bigstring} is only valid as long as the current transaction.
         It is therefore strongly recommended not to leak it out of [deserialise].
 
       @param flags Flags to be set on a map using this converter.
@@ -323,8 +323,8 @@ module Map : sig
 
       @param flags {!Flags}
       @raise Exists on maps not supporting duplicates if the key already exists.
-      @raise Exists if key is already bound to [value] and {!
-      Map.Flags.no_dup_data} was passed.
+      @raise Exists if key is already bound to [value] and
+      {!Map.Flags.no_dup_data} was passed.
   *)
   val add : ('key, 'value, _) t ->
     ?txn:[> `Write ] Txn.t -> ?flags:Flags.t -> 'key -> 'value -> unit
@@ -434,14 +434,14 @@ module Cursor : sig
 
       Here is an example that returns the first 5 elements of a [map]:
       {[
-go ro map begin fun c ->
-let h = first c in
-let rec aux i =
-  if i < 5 then next c :: aux (i+1)
-  else []
-in
-h :: aux 1
-end
+      go ro map begin fun c ->
+      let h = first c in
+      let rec aux i =
+        if i < 5 then next c :: aux (i+1)
+        else []
+      in
+      h :: aux 1
+      end
       ]}
 
       @param txn if omitted a transient transaction will implicitely be
