@@ -760,6 +760,33 @@ module Map = struct
     Txn.trivial Rw ?txn map.env @@ fun txn ->
     Mdb.del txn map.dbi ka va
 
+  let to_dispenser_prim init step ?txn:parent map =
+    let c = ref Mdb.Block_option.none in
+    let finish () =
+      let {Cursor.cursor; _} = Mdb.Block_option.get_exn !c in
+      let txn = Mdb.cursor_txn cursor in
+      Mdb.cursor_close cursor;
+      Mdb.txn_commit txn;
+      None
+    in
+    function () ->
+      if Mdb.Block_option.is_none !c
+      then begin
+        let txn = Mdb.txn_begin map.env parent Env.Flags.read_only in
+        let cursor = { Cursor.cursor = Mdb.cursor_open txn map.dbi; map } in
+        c := Mdb.Block_option.some cursor;
+        try Some (init cursor)
+        with Not_found -> finish ()
+      end
+      else begin
+        let cursor = Mdb.Block_option.get_exn !c in
+        try Some (step cursor)
+        with Not_found -> finish ()
+      end
+
+  let to_dispenser ?txn map = to_dispenser_prim Cursor.first Cursor.next ?txn map
+  let to_dispenser_rev ?txn map = to_dispenser_prim Cursor.last Cursor.prev ?txn map
+
   let compare_key map ?txn x y =
     let key = map.key in
     let xa = key.serialise Bigstring.create x in

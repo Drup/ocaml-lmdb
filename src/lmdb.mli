@@ -356,6 +356,12 @@ module Map : sig
   val drop : ?txn: [> `Write ] Txn.t -> ?delete:bool ->
     ('key, 'value, _) t -> unit
 
+  val to_dispenser : ?txn: [> `Read ] Txn.t -> ('key, 'value, _) t ->
+    (unit -> ('key * 'value) option)
+
+  val to_dispenser_rev : ?txn: [> `Read ] Txn.t -> ('key, 'value, _) t ->
+    (unit -> ('key * 'value) option)
+
   (** [compare_key map ?txn a b]
      Compares [a] and [b] as if they were keys in [map]. *)
   val compare_key : ('key, 'value, _) t -> ?txn:[> `Read ] Txn.t -> 'key -> 'key -> int

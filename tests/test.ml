@@ -155,6 +155,28 @@ let test_map =
       Map.add dupmap 4285 2;
       Map.get dupmap 4285 |> check int "get returns first value" 1;
     end
+  ; "dispenser uni", `Quick, begin fun () ->
+      let n = ref 12 in
+      Map.to_dispenser unimap_filled |> Seq.of_dispenser
+      |> Seq.iter
+        begin fun (key,value) ->
+          check int "key" !n key;
+          check int "values" !n value;
+          n := value * 2;
+        end;
+      check int "last_kv" 805306368 !n
+    end
+  ; "dispenser_rev uni", `Quick, begin fun () ->
+      let n = ref 402653184 in
+      Map.to_dispenser_rev unimap_filled |> Seq.of_dispenser
+      |> Seq.iter
+        begin fun (key,value) ->
+          check int "key" !n key;
+          check int "values" !n value;
+          n := value / 2;
+        end;
+      check int "last_kv" 6 !n
+    end
   ; "remove", `Quick, begin fun () ->
       Map.set unimap 4285 1;
       Map.remove unimap 4285;
