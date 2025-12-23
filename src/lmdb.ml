@@ -279,172 +279,14 @@ module Conv = struct
     }
 end
 
-module Map = struct
-  type ('k, 'v, -'dup) t =
-    { env               :Env.t
-    ; mutable dbi       :Mdb.dbi
-    ; flags             :Mdb.DbiFlags.t
-    ; key               : 'k Conv.t
-    ; value             : 'v Conv.t
-    }
-    constraint 'dup = [< `Dup | `Uni ]
-
-  let env { env; _ } = env
-
-  type 'a card =
-    | Nodup : [ `Uni ] card
-    | Dup : [ `Dup | `Uni ] card
-
-  let create
-      (type dup key value)
-      (perm     : 'openperm perm)
-      (dup      : (dup as 'dup) card)
-      ~(key     : key Conv.t)
-      ~(value   : value Conv.t)
-      ?(txn     : 'openperm Txn.t option)
-      ?(name    : string option)
-      (env      : Env.t)
-    :(key, value, 'dup) t
-    =
-    let create_of_perm (type p) (perm :p perm) =
-      match perm with
-      | Ro -> Conv.Flags.none
-      | Rw -> Conv.Flags.create
-    in
-    let flags =
-      let open Conv.Flags in
-      create_of_perm perm +
-      key.flags * (reverse_key + integer_key) +
-      match dup with
-      | Nodup -> Conv.Flags.none
-      | Dup when name = None ->
-        invalid_arg "Lmdb.Map.create: The unnamed map does not support duplicates"
-      | Dup ->
-        dup_sort +
-        value.flags * (dup_fixed + integer_dup + reverse_dup)
-    in
-    let dbi, flags =
-      Txn.trivial perm ?txn env @@ fun txn ->
-      let dbi = Mdb.dbi_open txn name flags in
-      let flags' = Mdb.dbi_flags txn dbi in
-      if not Conv.Flags.(eq (unset create flags) flags')
-      then begin
-        Mdb.dbi_close env dbi;
-        Printf.sprintf "Lmdb.Map.create: While opening %s got flags %0#x, but expected %0#x\n"
-          (match name with None -> "<unnamed>" | Some name -> name)
-          (Conv.Flags.to_int flags')
-          (Conv.Flags.to_int flags)
-        |> invalid_arg
-      end;
-      dbi, flags
-    in
-    { env; dbi; flags; key; value }
-
-  let create dup ~key ~value ?txn ?name env =
-    create Rw dup ~key ~value ?txn ?name env
-  and open_existing dup ~key ~value ?txn ?name env =
-    create Ro dup ~key ~value ?txn ?name env
-
-  let close ({env; dbi; _} as map) =
-    map.dbi <- Mdb.invalid_dbi;
-    Mdb.dbi_close env dbi
-
-  let stat ?txn {env; dbi; _} =
-    Txn.trivial Ro ?txn env @@ fun txn ->
-    Mdb.dbi_stat txn dbi
-
-  let _flags ?txn {env; dbi; _} =
-    Txn.trivial Ro env ?txn @@ fun txn ->
-    Mdb.dbi_flags txn dbi
-
-  let drop ?txn ?(delete=false) ({dbi ;env ;_ } as map) =
-    if delete then map.dbi <- Mdb.invalid_dbi;
-    Txn.trivial Rw ?txn env @@ fun txn ->
-    Mdb.drop txn dbi delete
-
-  let get map ?txn k =
-    Txn.trivial Ro ?txn map.env @@ fun txn ->
-    Mdb.get txn map.dbi (map.key.serialise Bigstring.create k)
-    |> map.value.deserialise
-
-  module Flags = Mdb.PutFlags
-
-  let put_raw_key map ?txn ?(flags=Flags.none) ka v =
-    if Conv.Flags.(test dup_sort map.flags)
-    then begin
-      let va = map.value.serialise Bigstring.create v in
-      Txn.trivial Rw ?txn map.env @@ fun txn ->
-      Mdb.put txn map.dbi ka va flags
-    end
-    else begin
-      Txn.trivial Rw ?txn map.env @@ fun txn ->
-      let va_opt = ref Mdb.Block_option.none in
-      let alloc len =
-        if Mdb.Block_option.is_some !va_opt then
-          invalid_arg "Lmdb: converting function tried to allocate twice.";
-        let va = Mdb.put_reserve txn map.dbi ka len flags in
-        va_opt := Mdb.Block_option.some va;
-        va
-      in
-      let va = map.value.serialise alloc v in
-      if Mdb.Block_option.is_some !va_opt
-      then begin
-        if Mdb.Block_option.get_unsafe !va_opt != va then
-          invalid_arg "Lmdb: converting function allocated, but returned different buffer."
-      end
-      else Mdb.put txn map.dbi ka va flags
-    end
-
-  let add map ?txn ?(flags=Flags.none) k v =
-    let flags =
-      if Conv.Flags.(test dup_sort map.flags)
-      then flags
-      else Flags.(flags + no_overwrite)
-    in
-    let ka = map.key.serialise Bigstring.create k in
-    put_raw_key map ?txn ~flags ka v
-
-  let set map ?txn ?flags k v =
-    let ka = map.key.serialise Bigstring.create k in
-    if Conv.Flags.(test dup_sort map.flags)
-    then begin
-      Txn.trivial Rw ?txn map.env @@ fun txn ->
-      (try Mdb.del txn map.dbi ka Mdb.Block_option.none with Not_found -> ());
-      put_raw_key map ~txn ?flags ka v
-    end
-    else
-      put_raw_key map ?txn ?flags ka v
-
-  let remove map ?txn ?value:v k =
-    let key = map.key and value = map.value in
-    let ka = key.serialise Bigstring.create k in
-    let va = match v with
-      | None -> Mdb.Block_option.none
-      | Some v ->
-        Mdb.Block_option.some @@ value.serialise Bigstring.create v
-    in
-    Txn.trivial Rw ?txn map.env @@ fun txn ->
-    Mdb.del txn map.dbi ka va
-
-  let compare_key map ?txn x y =
-    let key = map.key in
-    let xa = key.serialise Bigstring.create x in
-    let ya = key.serialise Bigstring.create y in
-    Txn.trivial Ro ?txn map.env @@ fun txn ->
-    Mdb.cmp txn map.dbi xa ya
-
-  let compare_val map ?txn =
-    if not Conv.Flags.(test dup_sort map.flags) then
-      invalid_arg "Lmdb: elements are only comparable in a dup_sort map";
-    let value = map.value in
-    fun x y ->
-    let xa = value.serialise Bigstring.create x in
-    let ya = value.serialise Bigstring.create y in
-    Txn.trivial Ro ?txn map.env @@ fun txn ->
-    Mdb.dcmp txn map.dbi xa ya
-
-  let compare = compare_key
-end
+type ('k, 'v, -'dup) map =
+  { env               :Env.t
+  ; mutable dbi       :Mdb.dbi
+  ; flags             :Mdb.DbiFlags.t
+  ; key               : 'k Conv.t
+  ; value             : 'v Conv.t
+  }
+  constraint 'dup = [< `Dup | `Uni ]
 
 module Cursor = struct
 
@@ -454,13 +296,13 @@ module Cursor = struct
 
   type ('k, 'v, -'perm, -'dup) t =
     { cursor: Mdb.cursor
-    ; map: ('k, 'v, 'dup) Map.t }
+    ; map: ('k, 'v, 'dup) map }
     constraint 'dup = [< `Dup | `Uni ]
     constraint 'perm = [< `Read | `Write ]
 
   let txn {cursor; _} = Mdb.cursor_txn cursor
 
-  let go perm ?txn (map :_ Map.t) f =
+  let go perm ?txn map f =
     Txn.trivial perm map.env ?txn @@ fun t ->
     let cursor =
       { cursor = Mdb.cursor_open t map.dbi
@@ -477,7 +319,7 @@ module Cursor = struct
       (*Printexc.raise_with_backtrace exn bt - since OCaml 4.05 *)
 
   (* Used internally for trivial functions, not exported. *)
-  let trivial perm ?cursor (map :_ Map.t) f =
+  let trivial perm ?cursor map f =
     match (cursor :_ t option) with
     | Some cursor ->
       if cursor.map != map
@@ -776,4 +618,164 @@ module Cursor = struct
 
   let iter_rev_all ?cursor ~f map =
     fold_right_all ?cursor map () ~f:(fun key values () -> f key values)
+end
+
+module Map = struct
+  type ('k, 'v, -'dup) t = ('k, 'v, 'dup) map
+
+  let env { env; _ } = env
+
+  type 'a card =
+    | Nodup : [ `Uni ] card
+    | Dup : [ `Dup | `Uni ] card
+
+  let create
+      (type dup key value)
+      (perm     : 'openperm perm)
+      (dup      : (dup as 'dup) card)
+      ~(key     : key Conv.t)
+      ~(value   : value Conv.t)
+      ?(txn     : 'openperm Txn.t option)
+      ?(name    : string option)
+      (env      : Env.t)
+    :(key, value, 'dup) t
+    =
+    let create_of_perm (type p) (perm :p perm) =
+      match perm with
+      | Ro -> Conv.Flags.none
+      | Rw -> Conv.Flags.create
+    in
+    let flags =
+      let open Conv.Flags in
+      create_of_perm perm +
+      key.flags * (reverse_key + integer_key) +
+      match dup with
+      | Nodup -> Conv.Flags.none
+      | Dup when name = None ->
+        invalid_arg "Lmdb.Map.create: The unnamed map does not support duplicates"
+      | Dup ->
+        dup_sort +
+        value.flags * (dup_fixed + integer_dup + reverse_dup)
+    in
+    let dbi, flags =
+      Txn.trivial perm ?txn env @@ fun txn ->
+      let dbi = Mdb.dbi_open txn name flags in
+      let flags' = Mdb.dbi_flags txn dbi in
+      if not Conv.Flags.(eq (unset create flags) flags')
+      then begin
+        Mdb.dbi_close env dbi;
+        Printf.sprintf "Lmdb.Map.create: While opening %s got flags %0#x, but expected %0#x\n"
+          (match name with None -> "<unnamed>" | Some name -> name)
+          (Conv.Flags.to_int flags')
+          (Conv.Flags.to_int flags)
+        |> invalid_arg
+      end;
+      dbi, flags
+    in
+    { env; dbi; flags; key; value }
+
+  let create dup ~key ~value ?txn ?name env =
+    create Rw dup ~key ~value ?txn ?name env
+  and open_existing dup ~key ~value ?txn ?name env =
+    create Ro dup ~key ~value ?txn ?name env
+
+  let close ({env; dbi; _} as map) =
+    map.dbi <- Mdb.invalid_dbi;
+    Mdb.dbi_close env dbi
+
+  let stat ?txn {env; dbi; _} =
+    Txn.trivial Ro ?txn env @@ fun txn ->
+    Mdb.dbi_stat txn dbi
+
+  let _flags ?txn {env; dbi; _} =
+    Txn.trivial Ro env ?txn @@ fun txn ->
+    Mdb.dbi_flags txn dbi
+
+  let drop ?txn ?(delete=false) ({dbi ;env ;_ } as map) =
+    if delete then map.dbi <- Mdb.invalid_dbi;
+    Txn.trivial Rw ?txn env @@ fun txn ->
+    Mdb.drop txn dbi delete
+
+  let get map ?txn k =
+    Txn.trivial Ro ?txn map.env @@ fun txn ->
+    Mdb.get txn map.dbi (map.key.serialise Bigstring.create k)
+    |> map.value.deserialise
+
+  module Flags = Mdb.PutFlags
+
+  let put_raw_key map ?txn ?(flags=Flags.none) ka v =
+    if Conv.Flags.(test dup_sort map.flags)
+    then begin
+      let va = map.value.serialise Bigstring.create v in
+      Txn.trivial Rw ?txn map.env @@ fun txn ->
+      Mdb.put txn map.dbi ka va flags
+    end
+    else begin
+      Txn.trivial Rw ?txn map.env @@ fun txn ->
+      let va_opt = ref Mdb.Block_option.none in
+      let alloc len =
+        if Mdb.Block_option.is_some !va_opt then
+          invalid_arg "Lmdb: converting function tried to allocate twice.";
+        let va = Mdb.put_reserve txn map.dbi ka len flags in
+        va_opt := Mdb.Block_option.some va;
+        va
+      in
+      let va = map.value.serialise alloc v in
+      if Mdb.Block_option.is_some !va_opt
+      then begin
+        if Mdb.Block_option.get_unsafe !va_opt != va then
+          invalid_arg "Lmdb: converting function allocated, but returned different buffer."
+      end
+      else Mdb.put txn map.dbi ka va flags
+    end
+
+  let add map ?txn ?(flags=Flags.none) k v =
+    let flags =
+      if Conv.Flags.(test dup_sort map.flags)
+      then flags
+      else Flags.(flags + no_overwrite)
+    in
+    let ka = map.key.serialise Bigstring.create k in
+    put_raw_key map ?txn ~flags ka v
+
+  let set map ?txn ?flags k v =
+    let ka = map.key.serialise Bigstring.create k in
+    if Conv.Flags.(test dup_sort map.flags)
+    then begin
+      Txn.trivial Rw ?txn map.env @@ fun txn ->
+      (try Mdb.del txn map.dbi ka Mdb.Block_option.none with Not_found -> ());
+      put_raw_key map ~txn ?flags ka v
+    end
+    else
+      put_raw_key map ?txn ?flags ka v
+
+  let remove map ?txn ?value:v k =
+    let key = map.key and value = map.value in
+    let ka = key.serialise Bigstring.create k in
+    let va = match v with
+      | None -> Mdb.Block_option.none
+      | Some v ->
+        Mdb.Block_option.some @@ value.serialise Bigstring.create v
+    in
+    Txn.trivial Rw ?txn map.env @@ fun txn ->
+    Mdb.del txn map.dbi ka va
+
+  let compare_key map ?txn x y =
+    let key = map.key in
+    let xa = key.serialise Bigstring.create x in
+    let ya = key.serialise Bigstring.create y in
+    Txn.trivial Ro ?txn map.env @@ fun txn ->
+    Mdb.cmp txn map.dbi xa ya
+
+  let compare_val map ?txn =
+    if not Conv.Flags.(test dup_sort map.flags) then
+      invalid_arg "Lmdb: elements are only comparable in a dup_sort map";
+    let value = map.value in
+    fun x y ->
+    let xa = value.serialise Bigstring.create x in
+    let ya = value.serialise Bigstring.create y in
+    Txn.trivial Ro ?txn map.env @@ fun txn ->
+    Mdb.dcmp txn map.dbi xa ya
+
+  let compare = compare_key
 end
