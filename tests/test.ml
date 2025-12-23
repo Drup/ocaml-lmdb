@@ -618,6 +618,13 @@ let test_regress =
       check (pair string (array string)) "dup entries" ("dup entry", [|"1";"2"|])
         (Cursor.current_all cursor);
     end
+  ; "bad allocation", `Quick, begin fun () ->
+      for i=0 to 2000 do
+        ignore i;
+        let disp = Map.to_dispenser dupmap_filled in
+        while disp () <> None do () done;
+      done
+    end
   ]
 
 let test_txn =
