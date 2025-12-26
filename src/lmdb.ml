@@ -650,32 +650,32 @@ module Map = struct
     | Dup : [ `Dup | `Uni ] card
 
   let create
-      (type dup key value)
       (perm     : 'openperm perm)
-      (dup      : (dup as 'dup) card)
-      ~(key     : key Conv.t)
-      ~(value   : value Conv.t)
+      (dup      : 'dup card)
+      ~(key     : 'key Conv.t)
+      ~(value   : 'value Conv.t)
       ?(txn     : 'openperm Txn.t option)
       ?(name    : string option)
       (env      : Env.t)
-    :(key, value, 'dup) t
+    :('key, 'value, 'dup) t
     =
     let create_of_perm (type p) (perm :p perm) =
       match perm with
       | Ro -> Conv.Flags.none
       | Rw -> Conv.Flags.create
-    in
-    let flags =
-      let open Conv.Flags in
-      create_of_perm perm +
-      key.flags * (reverse_key + integer_key) +
+    and flags_of_dup (type dup) (dup : dup card) =
       match dup with
       | Nodup -> Conv.Flags.none
       | Dup when name = None ->
         invalid_arg "Lmdb.Map.create: The unnamed map does not support duplicates"
       | Dup ->
-        dup_sort +
-        value.flags * (dup_fixed + integer_dup + reverse_dup)
+      let open Conv.Flags in
+        dup_sort + value.flags * (dup_fixed + integer_dup + reverse_dup)
+    in
+    let flags =
+      let open Conv.Flags in
+      create_of_perm perm +
+      key.flags * (reverse_key + integer_key) + flags_of_dup dup
     in
     let dbi, flags =
       Txn.trivial perm ?txn env @@ fun txn ->
