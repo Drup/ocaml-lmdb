@@ -1,6 +1,13 @@
 open Alcotest
 open Lmdb
 
+let seq_of_dispenser d =
+  let rec s () =
+    match d () with
+    | Some e -> Seq.Cons (e, s)
+    | None -> Seq.Nil
+  in c
+
 let () =
   let (s,major,minor,patch) = Lmdb.version in
   Printf.printf "Version: %s\nOr: (%i,%i,%i)\nOCaml Version: %s\n%!"
@@ -157,7 +164,7 @@ let test_map =
     end
   ; "dispenser uni", `Quick, begin fun () ->
       let n = ref 12 in
-      Map.to_dispenser unimap_filled |> Seq.of_dispenser
+      Map.to_dispenser unimap_filled |> seq_of_dispenser
       |> Seq.iter
         begin fun (key,value) ->
           check int "key" !n key;
@@ -168,7 +175,7 @@ let test_map =
     end
   ; "dispenser_rev uni", `Quick, begin fun () ->
       let n = ref 402653184 in
-      Map.to_dispenser_rev unimap_filled |> Seq.of_dispenser
+      Map.to_dispenser_rev unimap_filled |> seq_of_dispenser
       |> Seq.iter
         begin fun (key,value) ->
           check int "key" !n key;
@@ -179,7 +186,7 @@ let test_map =
     end
   ; "dispenser dup", `Quick, begin fun () ->
       let kv = ref (12,12) in
-      Map.to_dispenser dupmap_filled |> Seq.of_dispenser
+      Map.to_dispenser dupmap_filled |> seq_of_dispenser
       |> Seq.iter
         begin fun (key,value) ->
           check_kv "kv pair" !kv (key,value);
@@ -191,7 +198,7 @@ let test_map =
     end
   ; "dispenser_rev dup", `Quick, begin fun () ->
       let kv = ref (402653184, 402653184) in
-      Map.to_dispenser_rev dupmap_filled |> Seq.of_dispenser
+      Map.to_dispenser_rev dupmap_filled |> seq_of_dispenser
       |> Seq.iter
         begin fun (key,value) ->
           check_kv "kv pair" !kv (key,value);
@@ -204,7 +211,7 @@ let test_map =
     end
   ; "dispenser_all", `Quick, begin fun () ->
       let n = ref 12 in
-      Map.to_dispenser_all dupmap_filled |> Seq.of_dispenser
+      Map.to_dispenser_all dupmap_filled |> seq_of_dispenser
       |> Seq.iter
         begin fun (key,values) ->
           check int "key" !n key;
@@ -221,7 +228,7 @@ let test_map =
     end
   ; "dispenser_rev_all", `Quick, begin fun () ->
       let n = ref 402653184 in
-      Map.to_dispenser_rev_all dupmap_filled |> Seq.of_dispenser
+      Map.to_dispenser_rev_all dupmap_filled |> seq_of_dispenser
       |> Seq.iter
         begin fun (key,values) ->
           check int "key" !n key;
