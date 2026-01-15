@@ -3,6 +3,10 @@
  (modules discover)
  (libraries str dune.configurator))
 
-(rule
- (targets cflags.sexp clibs.sexp)
- (action (run ./discover.bc)))
+(subdir config
+ (rule
+  (alias config)
+  (deps ../src/stubs_shipped.inc ../src/stubs_system.inc)
+  (targets cflags.sexp clibs.sexp stubs.inc)
+  (action (run ../discover.exe)))
+)

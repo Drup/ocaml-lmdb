@@ -10,20 +10,24 @@
  (libraries benchmark lmdb)
 )
 
-(test
+(executable
  (name test)
  (modules pr test)
  (flags :standard -thread)
  (libraries alcotest lmdb threads)
+)
+
+(rule
+ (alias runtest)
  (action
   (setenv MALLOC_CHECK_ 3
     (setenv MALLOC_PERTURB_ 195
-      (run %{test} --color=always -q)))
+      (run %{dep:test.exe} --color=always -q)))
  )
 )
 
-(alias
- (name bench)
- (deps bench.exe (universe))
- (action (run ./bench.exe))
+(rule
+ (alias bench)
+ (deps :bench bench.exe)
+ (action (run %{dep:bench}))
 )

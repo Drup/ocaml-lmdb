@@ -2,13 +2,24 @@
  (name lmdb)
  (public_name lmdb)
  (synopsis "Bindings for LMDB, a fast in-file database with ACID transactions")
- (flags :standard -safe-string)
+ (modules Lmdb_bindings Lmdb)
  (libraries unix bigstringaf)
- (c_flags
-  :standard
-  (:include "%{project_root}/cflags.sexp")
-  -Wall -Wextra -Wno-unused-parameter -pedantic
+ (flags :standard -safe-string)
+ (c_library_flags (:include "../config/clibs.sexp"))
+ (foreign_archives stubs/stubs)
+)
+
+; needs to build in subdir to avoid cyclic dependency of dynamic_include
+(subdir stubs
+ (dynamic_include ../../config/stubs.inc)
+ (rule (copy ../lmdb_stubs.c lmdb_stubs.c))
+ (rule
+  (deps (source_tree ../../liblmdb))
+  (action
+   (concurrent
+    (copy ../../liblmdb/libraries/liblmdb/mdb.c mdb.c)
+    (copy ../../liblmdb/libraries/liblmdb/midl.c midl.c)
+   )
+  )
  )
- (c_names lmdb_stubs)
- (c_library_flags (:include "%{project_root}/clibs.sexp"))
 )
