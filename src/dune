@@ -2,7 +2,7 @@
  (name lmdb)
  (public_name lmdb)
  (synopsis "Bindings for LMDB, a fast in-file database with ACID transactions")
- (flags :standard -safe-string -thread)
+ (flags :standard -safe-string)
  (libraries unix bigstringaf)
  (c_flags
   :standard
