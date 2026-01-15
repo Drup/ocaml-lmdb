@@ -18,24 +18,26 @@ build: [
 ]
 depends: [
   "ocaml" {>= "4.07"}
-  "bigstringaf"
+  "bigstringaf" {>= "0.10.0"}
   "dune" {>= "1.2"}
   "dune-configurator" {build}
   "alcotest" {with-test}
   "benchmark" {with-test}
   "odoc" {with-doc}
+  "conf-pkg-config" {build}
 ]
 
 depexts: [
-  ["liblmdb-dev"] {os-family = "debian"}
+  ["liblmdb-dev"] {os-family = "debian" | os-family = "ubuntu"}
   ["lmdb"] {os-family = "bsd"}
   ["lmdb"] {os-family = "homebrew"}
   ["lmdb"] {os-family = "macports"}
   ["lmdb"] {os-family = "archlinux"}
   ["lmdb"] {os-family = "gentoo"}
   ["lmdb-dev"] {os-family = "alpine"}
-  ["lmdb-devel"] {os-family = "rhel" | os-family = "centos"}
+  ["lmdb-devel"] {os-family = "centos"}
   ["lmdb-devel"] {os-family = "fedora"}
   ["lmdb-devel"] {os-family = "suse" | os-family = "opensuse"}
   ["liblmdb-devel"] {os-family = "mageia"}
+  ["lmdb"] {os-distribution = "nixos"}
 ]
