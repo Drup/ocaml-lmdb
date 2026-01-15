@@ -6,7 +6,7 @@ let seq_of_dispenser d =
     match d () with
     | Some e -> Seq.Cons (e, s)
     | None -> Seq.Nil
-  in c
+  in s
 
 let () =
   let (s,major,minor,patch) = Lmdb.version in
