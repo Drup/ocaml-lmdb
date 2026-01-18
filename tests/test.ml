@@ -25,7 +25,7 @@ let filename =
 let env =
   Env.create Rw
     ~flags:Env.Flags.(no_subdir + no_sync + no_mem_init)
-    ~map_size:524288
+    ~map_size:(1 lsl 20)
     ~max_maps:10
     filename
 let () =
