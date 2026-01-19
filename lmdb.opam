@@ -19,7 +19,7 @@ build: [
 depends: [
   "ocaml" {>= "4.07"}
   "bigstringaf" {>= "0.10.0"}
-  "dune" {>= "1.2"}
+  "dune" {>= "3.14"}
   "dune-configurator" {build}
   "alcotest" {with-test}
   "benchmark" {with-test}
