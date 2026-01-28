@@ -1,5 +1,5 @@
 (foreign_library
- (archive_name stubs)
+ (archive_name lmdb_stubs)
  (language c)
  (names lmdb_stubs)
  (flags

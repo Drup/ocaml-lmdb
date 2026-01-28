@@ -6,7 +6,7 @@
  (libraries unix bigstringaf)
  (flags :standard -safe-string)
  (c_library_flags (:include "../config/clibs.sexp"))
- (foreign_archives stubs/stubs)
+ (foreign_archives stubs/lmdb_stubs)
 )
 
 ; needs to build in subdir to avoid cyclic dependency of dynamic_include
