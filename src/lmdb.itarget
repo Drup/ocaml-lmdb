@@ -1,0 +1,3 @@
+lmdb.cma
+liblmdb_stubs.a
+dlllmdb_stubs.so

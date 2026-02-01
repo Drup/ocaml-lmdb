@@ -12,14 +12,18 @@ dev-repo: "git+https://github.com/Drup/ocaml-lmdb.git"
 doc: "https://drup.github.io/ocaml-lmdb/dev/lmdb/Lmdb/index.html"
 tags: [ "clib:lmdb" "database" ]
 build: [
-  ["dune" "subst"] {pinned}
-  ["dune" "build" "-p" name "-j" jobs]
-  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+  ["ocamlbuild" "build"]
+]
+install: [
+  ["ocamlbuild" "install"]
+]
+run-test: [
+  ["ocamlbuild" "test"]
 ]
 depends: [
   "ocaml" {>= "4.07"}
-  "dune" {>= "3.14"}
-  "dune-configurator" {build}
+  "ocamlbuild" {>= "0.16.1"}
+  "ocamlfind"
   "alcotest" {with-test}
   "benchmark" {with-test}
   "odoc" {with-doc}

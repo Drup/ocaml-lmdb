@@ -1,0 +1,12 @@
+true: warn(+a-40-42-44-45-70)
+
+# use custom buid to prevent dynamic linking to system wide installed stubs
+true: custom
+
+<*.ml>: use_lmdb
+
+<*.{byte,native}>: use_lmdb, package(bigstringaf)
+
+<bench.{ml,byte,native}>: package(benchmark)
+
+<{pr,test}.*>: thread, package(alcotest), package(fmt)
