@@ -3,7 +3,7 @@
  (public_name lmdb)
  (synopsis "Bindings for LMDB, a fast in-file database with ACID transactions")
  (modules Lmdb_bindings Lmdb)
- (libraries unix bigstringaf)
+ (libraries unix)
  (flags :standard -safe-string)
  (c_library_flags (:include "../config/clibs.sexp"))
  (foreign_archives stubs/lmdb_stubs)

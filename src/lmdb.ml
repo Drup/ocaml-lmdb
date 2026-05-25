@@ -1,6 +1,63 @@
 module Mdb = Lmdb_bindings
 module type Flags = Mdb.Flags
-module Bigstring = Bigstringaf
+module Bigstring : sig
+    type t = Bigarray.((char, int8_unsigned_elt, c_layout) Array1.t)
+    val create : int -> t
+
+    val length : t -> int
+
+    val sub : t -> int -> int -> t
+
+    val to_string : t -> string
+    val blit_from_string : t -> string -> unit
+
+    val set_int32_be : t -> int -> int32 -> unit
+    val get_int32_be : t -> int -> int32
+    val set_int64_be : t -> int -> int64 -> unit
+    val get_int64_be : t -> int -> int64
+    val set_int32_le : t -> int -> int32 -> unit
+    val get_int32_le : t -> int -> int32
+    val set_int64_le : t -> int -> int64 -> unit
+    val get_int64_le : t -> int -> int64
+  end
+= struct
+  type t = Bigarray.((char, int8_unsigned_elt, c_layout) Array1.t)
+
+  let create = Bigarray.(Array1.create Char C_layout)
+
+  let length = Bigarray.Array1.dim
+
+  let sub = Bigarray.Array1.sub
+
+  external to_string : t -> string = "mdbs_ba_to_string"
+  external blit_from_string : t -> string -> unit = "mdbs_blit_from_string"
+
+  external set32 : t -> int -> int32 -> unit = "%caml_bigstring_set32"
+  external set64 : t -> int -> int64 -> unit = "%caml_bigstring_set64"
+
+  external get32 : t -> int -> int32 = "%caml_bigstring_get32"
+  external get64 : t -> int -> int64 = "%caml_bigstring_get64"
+
+  external swap32 : int32 -> int32 = "%bswap_int32"
+  external swap64 : int64 -> int64 = "%bswap_int64"
+
+  let swap_set32 b i x = set32 b i (swap32 x)
+  and swap_set64 b i x = set64 b i (swap64 x)
+  and swap_get32 b i = swap32 (get32 b i)
+  and swap_get64 b i = swap64 (get64 b i)
+
+  let
+    set_int32_be, get_int32_be, set_int64_be, get_int64_be,
+    set_int32_le, get_int32_le, set_int64_le, get_int64_le
+    =
+    if Sys.big_endian
+    then
+      set32, get32, set64, get64,
+      swap_set32, swap_get32, swap_set64, swap_get64
+    else
+      swap_set32, swap_get32, swap_set64, swap_get64,
+      set32, get32, set64, get64
+end
 
 exception Not_found = Not_found
 exception Exists = Mdb.Exists
@@ -264,12 +321,10 @@ module Conv = struct
     ; serialise = begin fun alloc s ->
         let len = String.length s in
         let a = alloc len in
-        Bigstring.blit_from_string s ~src_off:0 a ~dst_off:0 ~len;
+        Bigstring.blit_from_string a s;
         a
       end
-    ; deserialise = begin fun a ->
-        Bigstring.substring a ~off:0 ~len:(Bigstring.length a)
-      end
+    ; deserialise = Bigstring.to_string
     }
 
   let bigstring =
@@ -430,7 +485,7 @@ module Cursor = struct
       end
       else
         assert (!off + size <= Bigstring.length !buf);
-      let v = Bigstring.sub !buf ~off:!off ~len:size in
+      let v = Bigstring.sub !buf !off size in
       off := !off + size;
       cursor.map.value.deserialise v
     in

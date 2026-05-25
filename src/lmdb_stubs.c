@@ -550,7 +550,7 @@ CAMLprim value mdbs_drop(value txn, value dbi, value del)
 
 static inline void mvp_of_ba(MDB_val *mvp, value ba)
 {
-  struct caml_ba_array *cba = Caml_ba_array_val(ba);
+  const struct caml_ba_array *cba = Caml_ba_array_val(ba);
   CAMLassert(cba->num_dims == 1);
   mvp->mv_size = cba->dim[0];
   mvp->mv_data = cba->data;
@@ -733,4 +733,21 @@ CAMLprim value mdbs_dcmp(value txn, value dbi, value key, value val)
   caml_acquire_runtime_system();
 
   return ret;
+}
+
+CAMLprim value mdbs_ba_to_string(value ba)
+{
+  const struct caml_ba_array *cba = Caml_ba_array_val(ba);
+  CAMLassert(cba->num_dims == 1);
+  return caml_alloc_initialized_string (cba->dim[0], cba->data);
+}
+
+CAMLprim value mdbs_blit_from_string(value ba, value s)
+{
+  const struct caml_ba_array *cba = Caml_ba_array_val(ba);
+  mlsize_t len = caml_string_length(s);
+  CAMLassert(cba->num_dims == 1);
+  CAMLassert(cba->dim[0] == len);
+  memcpy(cba->data, String_val(s), len);
+  return Val_unit;
 }
