@@ -121,7 +121,8 @@ let rules () =
         else
           [ "lmdb_stubs.o"
           ; "mdb.o"
-          ; "midl.o" ]
+          ; "midl.o"
+          ; "module.o" ]
       in
       Echo (List.map (fun f -> f ^ "\n") libs,
             "src/liblmdb_stubs.clib")
@@ -137,6 +138,7 @@ let rules () =
     let tags = ["ccopt(-pthread)"] in
     tag_file "src/mdb.c" tags;
     tag_file "src/midl.c" tags;
+    tag_file "src/module.c" tags;
   end;
 
   ocaml_lib ~dir:"src" "src/lmdb";

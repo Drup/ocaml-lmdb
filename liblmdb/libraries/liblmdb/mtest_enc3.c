@@ -1,25 +1,35 @@
-/* mtest.c - memory-mapped database tester/toy */
+/* mtest_enc.c - memory-mapped database tester/toy with encryption */
 /*
  * Copyright 2011-2021 Howard Chu, Symas Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted only as authorized by the OpenLDAP
- * Public License.
+ * modification, are permitted only as authorized by the Symas
+ * Dual-Use License.
  *
  * A copy of this license is available in the file LICENSE in the
- * top-level directory of the distribution or, alternatively, at
- * <http://www.OpenLDAP.org/license.html>.
+ * source distribution.
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include "lmdb.h"
+#include "chacha8.h"
 
 #define E(expr) CHECK((rc = (expr)) == MDB_SUCCESS, #expr)
 #define RES(err, expr) ((rc = expr) == (err) || (CHECK(!rc, #expr), 0))
 #define CHECK(test, msg) ((test) ? (void)0 : ((void)fprintf(stderr, \
 	"%s:%d: %s: %s\n", __FILE__, __LINE__, msg, mdb_strerror(rc)), abort()))
+
+// We need bigger entries for the reproducer
+#define KEY_SIZE 24 /* ITS#9920 Broken when >= 19 */
+#define MAX_VALUE_SIZE 150
+
+static int encfunc(const MDB_val *src, MDB_val *dst, const MDB_val *key, int encdec)
+{
+	chacha8(src->mv_data, src->mv_size, key[0].mv_data, key[1].mv_data, dst->mv_data);
+	return 0;
+}
 
 int main(int argc,char * argv[])
 {
@@ -31,41 +41,66 @@ int main(int argc,char * argv[])
 	MDB_stat mst;
 	MDB_cursor *cursor, *cur2;
 	MDB_cursor_op op;
+	MDB_val enckey;
 	int count;
-	int *values;
+	int *key_lengths, *value_lengths;
+	char *keys, *values;
 	char sval[32] = "";
+	char ekey[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+		17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32};
 
-	srand(time(NULL));
+	   /* srand(time(NULL)); */
+	   srand(42);
 
-	    count = (rand()%384) + 64;
-	    values = (int *)malloc(count*sizeof(int));
+		count = 64000;
+		key_lengths = (int *)malloc(count*sizeof(int));
+        value_lengths = (int *)malloc(count*sizeof(int));
+        keys = (char *)malloc(count*KEY_SIZE*sizeof(char));
+        values = (char *)malloc(count*MAX_VALUE_SIZE*sizeof(char));
 
-	    for(i = 0;i<count;i++) {
-			values[i] = rand()%1024;
-	    }
-    
+		// for(i = 0;i<count;i++) {
+		// 	values[i] = i;
+		// }
+
+		for(i=0;i<count;i++) {
+            key_lengths[i] = KEY_SIZE;
+            value_lengths[i] = rand() % MAX_VALUE_SIZE + 1;
+
+            // Generate random key and value data
+            for(int k=0;k<key_lengths[i];k++) {
+                keys[i*KEY_SIZE+k] = 'A' + (rand() % 26);
+            }
+
+            for(int k=0;k<value_lengths[i];k++) {
+                values[i*MAX_VALUE_SIZE+k] = 'A' + (rand() % 26);
+            }
+        }
+
+		// return 0;
+
+		enckey.mv_data = ekey;
+		enckey.mv_size = sizeof(ekey);
+
 		E(mdb_env_create(&env));
 		E(mdb_env_set_maxreaders(env, 1));
-		E(mdb_env_set_mapsize(env, 10485760));
-		E(mdb_env_set_pagesize(env, 1024));
-		E(mdb_env_open(env, "./testdb", MDB_FIXEDMAP /*|MDB_NOSYNC*/, 0664));
+		E(mdb_env_set_mapsize(env, 1073741824 /*1GiB*/));
+		E(mdb_env_set_encrypt(env, encfunc, &enckey, 16)); /* ITS#9920 Broken when >= 8 */
+		E(mdb_env_open(env, "./testdb", 0 /*|MDB_NOSYNC*/, 0664));
 
 		E(mdb_txn_begin(env, NULL, 0, &txn));
 		E(mdb_dbi_open(txn, NULL, 0, &dbi));
-   
-		key.mv_size = sizeof(int);
-		key.mv_data = sval;
 
 		printf("Adding %d values\n", count);
-	    for (i=0;i<count;i++) {	
-			sprintf(sval, "%03x %d foo bar", values[i], values[i]);
+	    for (i=0;i<count;i++) {
+			key.mv_size = key_lengths[i];
+			key.mv_data = &keys[i*KEY_SIZE];
 			/* Set <data> in each iteration, since MDB_NOOVERWRITE may modify it */
-			data.mv_size = sizeof(sval);
-			data.mv_data = sval;
+			data.mv_size = value_lengths[i];
+			data.mv_data = &values[i*MAX_VALUE_SIZE];
 			if (RES(MDB_KEYEXIST, mdb_put(txn, dbi, &key, &data, MDB_NOOVERWRITE))) {
 				j++;
-				data.mv_size = sizeof(sval);
-				data.mv_data = sval;
+				data.mv_size = value_lengths[i];
+				data.mv_data = &values[i*MAX_VALUE_SIZE];
 			}
 	    }
 		if (j) printf("%d duplicates skipped\n", j);
@@ -89,7 +124,7 @@ int main(int argc,char * argv[])
 			j++;
 			txn=NULL;
 			E(mdb_txn_begin(env, NULL, 0, &txn));
-			sprintf(sval, "%03x ", values[i]);
+			// sprintf(sval, "%03x ", values[i]);
 			if (RES(MDB_NOTFOUND, mdb_del(txn, dbi, &key, NULL))) {
 				j--;
 				mdb_txn_abort(txn);
@@ -97,11 +132,23 @@ int main(int argc,char * argv[])
 				E(mdb_txn_commit(txn));
 			}
 	    }
+	    free(key_lengths);
+	    free(value_lengths);
+	    free(keys);
 	    free(values);
 		printf("Deleted %d values\n", j);
 
 		E(mdb_env_stat(env, &mst));
+		printf("Env stat:\n");
+		printf("\t ms_entries: %zu\n", mst.ms_entries);
+		printf("\t ms_depth: %u\n", mst.ms_depth);
 		E(mdb_txn_begin(env, NULL, MDB_RDONLY, &txn));
+
+		E(mdb_stat(txn, dbi, &mst));
+		printf("Database stat:\n");
+		printf("\t ms_entries: %zu\n", mst.ms_entries);
+		printf("\t ms_depth: %u\n", mst.ms_depth);
+
 		E(mdb_cursor_open(txn, dbi, &cursor));
 		printf("Cursor next\n");
 		while ((rc = mdb_cursor_get(cursor, &key, &data, MDB_NEXT)) == 0) {
