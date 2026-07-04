@@ -480,6 +480,56 @@ CAMLprim value mdbs_cursor_open (value txn, value dbi)
   return hide(cursor);
 }
 
+#if MDB_VERSION_MAJOR < 1
+CAMLprim value mdbs_txn_prepare(value txn)
+{
+  caml_invalid_argument("mdb_txn_prepare not implemented");
+}
+
+CAMLprim value mdbs_txn_id(value txn)
+{
+  caml_invalid_argument("mdb_txn_id not implemented");
+}
+
+CAMLprim value mdbs_env_rollback(value env, value id)
+{
+  caml_invalid_argument("mdb_env_rollback not implemented");
+}
+
+#else
+CAMLprim value mdbs_txn_prepare(value txn)
+{
+  mdbs_err_rel(mdb_txn_prepare(unhide(txn)));
+  return Val_unit;
+}
+
+CAMLprim value mdbs_txn_id(value txn)
+{
+  mdb_size_t id;
+  value ret;
+  id = mdb_txn_id(unhide(txn));
+  fprintf(stderr, "Got id %lu\n", id);
+# if SIZE_MAX > UINT32_MAX
+  return caml_copy_int32(id);
+# else
+  return caml_copy_int64(id);
+# endif
+}
+
+CAMLprim value mdbs_env_rollback(value env, value idv)
+{
+# if SIZE_MAX > UINT32_MAX
+  const mdb_size_t id = Int32_val(idv);
+# else
+  const mdb_size_t id = Int64_val(idv);
+# endif
+
+  fprintf(stderr, "Rollback txn id %lu\n", id);
+  mdbs_err_rel(mdb_env_rollback(unhide(env), id));
+  return Val_unit;
+}
+#endif
+
 CAMLprim value mdbs_txn_commit(value txn)
 {
   mdbs_err_rel(mdb_txn_commit(unhide(txn)));

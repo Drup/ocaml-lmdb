@@ -146,6 +146,15 @@ end
   val env : 'perm t -> Env.t
   (** [env txn] returns the environment of [txn] *)
 
+  val prepare : _ t -> unit
+
+  type id (* int32 or int64 *)
+
+  val id : _ t -> id
+  (** [id txn] returns the id of [txn] *)
+
+  val rollback : Env.t -> id -> unit
+  (** [rollback id] rollback the already commited transaction with [id]. *)
 end
 
 (** Converters to and from the internal representation of keys and values.

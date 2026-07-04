@@ -140,8 +140,15 @@ external txn_env : txn -> env = "mdbs_txn_env"
 external txn_begin :
   env -> txn option -> EnvFlags.t -> txn
   = "mdbs_txn_begin"
+external txn_prepare : txn -> unit = "mdbs_txn_prepare"
 external txn_commit : txn -> unit = "mdbs_txn_commit"
 external txn_abort : txn -> unit = "mdbs_txn_abort"
+
+type txn_id (* int32 or int64 *)
+external txn_id : txn -> txn_id
+  = "mdbs_txn_id"
+external txn_rollback : env -> txn_id -> unit
+  = "mdbs_env_rollback"
 
 
 (** {2 Dbi} *)

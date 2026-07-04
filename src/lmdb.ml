@@ -169,6 +169,12 @@ module Txn = struct
       raise exn
       (*Printexc.raise_with_backtrace exn bt - since OCaml 4.05 *)
 
+  let prepare = Mdb.txn_prepare
+
+  type id = Mdb.txn_id (* int32 or int64 *)
+  let id = Mdb.txn_id
+  and rollback = Mdb.txn_rollback
+
   (* Used internally for trivial functions, not exported. *)
   let trivial perm ?txn e f =
     match txn with

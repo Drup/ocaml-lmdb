@@ -81,20 +81,17 @@ let rules () =
           (fun k v -> k,v)
       end
     in
-    if List.assoc "system_lmdb" config = "true"
-    then begin
-      let tagify k v =
-        String.split_on_char ' ' v
-        |> List.filter ((<>) "")
-        |> List.map (Printf.sprintf "%s(%s)" k)
-      in
-      tag_file "src/lmdb_stubs.c" @@
-      tagify "ccopt" @@ List.assoc "cflags" config;
-      let libs = List.assoc "libs" config in
-      tag_file "src/lmdb.cma" @@ tagify "cclib" libs;
-      tag_file "src/lmdb.cmxa" @@ tagify "cclib" libs;
-      tag_file "src/liblmdb_stubs.a" @@ tagify "ldopt" libs;
-    end;
+    let tagify k v =
+      String.split_on_char ' ' v
+      |> List.filter ((<>) "")
+      |> List.map (Printf.sprintf "%s(%s)" k)
+    in
+    tag_file "src/lmdb_stubs.c" @@
+    tagify "ccopt" @@ List.assoc "cflags" config;
+    let libs = List.assoc "libs" config in
+    tag_file "src/lmdb.cma" @@ tagify "cclib" libs;
+    tag_file "src/lmdb.cmxa" @@ tagify "cclib" libs;
+    tag_file "src/liblmdb_stubs.a" @@ tagify "ldopt" libs;
     config
   in
 

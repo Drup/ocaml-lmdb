@@ -765,6 +765,34 @@ let test_txn =
         List.iter Map.close maps
       end
     end
+  ; "prepare and commit", `Quick, begin fun () ->
+      ignore @@ Txn.go Rw env begin fun txn ->
+        Map.add ~txn map 14 "blub";
+        Txn.prepare txn;
+      end;
+      Map.get map 14 |> check string "read" "blub";
+    end
+  ; "prepare and abort", `Quick, begin fun () ->
+      ignore @@ Txn.go Rw env begin fun txn ->
+        Map.add ~txn map 15 "blub";
+        Txn.prepare txn;
+        Txn.abort txn;
+      end;
+      check_raises "Expecting Not_found" Not_found @@ fun () ->
+      Map.get map 15 |> ignore
+    end
+  ; "rollback", `Quick, begin fun () ->
+      Txn.go Rw env begin fun txn ->
+        Map.add ~txn map 15 "blub";
+        Txn.id txn;
+      end
+      |> fun id ->
+      Txn.rollback env (Option.get id);
+      ignore @@ Txn.go Ro env begin fun txn ->
+        check_raises "Expecting Not_found" Not_found @@ fun () ->
+        Map.get ~txn map 15 |> ignore
+      end
+    end
   ]
 
 let () =
