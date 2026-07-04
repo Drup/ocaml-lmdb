@@ -13,6 +13,7 @@ doc: "https://drup.github.io/ocaml-lmdb/dev/lmdb/Lmdb/index.html"
 tags: [ "clib:lmdb" "database" ]
 build: [
   ["ocamlbuild" "build"]
+  ["ocamlbuild" "src/lmdb.docdir/index.html"] { with-doc }
 ]
 install: [
   ["ocamlbuild" "install"]
@@ -25,8 +26,6 @@ depends: [
   "ocamlbuild" {>= "0.16.1"}
   "ocamlfind"
   "alcotest" {with-test}
-  "benchmark" {with-test}
-  "odoc" {with-doc}
   "conf-pkg-config" {build}
 ]
 
