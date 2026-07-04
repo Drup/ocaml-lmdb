@@ -24,23 +24,37 @@ let rules () =
       ; "/opt/lib" ]
     in
     let include_path =
-      List.find
+      List.find_opt
         (fun path -> Sys.file_exists (path / "lmdb.h"))
         include_candidates
     and lib_path =
-      List.find
+      List.find_opt
         (fun path ->
            Sys.file_exists (path / "liblmdb.a"))
         lib_candidates
     in
     Command.execute @@
-    Echo (
-      [ "system_lmdb: true\n"
-      ; "cflags: " ^ "-I" ^ include_path ^ "\n"
-      ; "libs: "   ^ "-L" ^ lib_path; " -l" ^ "lmdb\n"
-      ],
-      conffile
-    )
+    match include_path, lib_path with
+    | Some include_path, Some lib_path ->
+      Printf.eprintf "Found lmdb: %s/lmdb.h %s/liblmdb.a\n"
+        include_path lib_path;
+      Echo (
+        [ "system_lmdb: true\n"
+        ; "cflags: " ^ "-I" ^ include_path ^ "\n"
+        ; "libs: "   ^ "-L" ^ lib_path; " -l" ^ "lmdb\n"
+        ],
+        conffile
+      )
+    | _, _ ->
+      prerr_endline "Using shipped lmdb";
+      Echo (
+        [ "system_lmdb: false\n"
+        ; "cflags: " ^ "-Isrc\n"
+        ; "libs:\n"
+        ],
+        conffile
+      )
+
 
   and pkgconf () =
     let pkgconf =
@@ -70,8 +84,9 @@ let rules () =
         try pkgconf () with
         | Not_found
         | Failure _ ->
-          try guess_config () with
-          | Not_found -> prerr_endline "No lmdb library found"
+          prerr_endline "pkg-config failed, guessing config";
+          try guess_config () with Not_found ->
+            failwith "No lmdb library found"
       end;
 
     let config =
