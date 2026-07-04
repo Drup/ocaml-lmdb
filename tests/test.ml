@@ -22,6 +22,16 @@ let filename =
   in
   tmp_filename "lmdb_test" ".db" 0
 
+let require_version major minor patch =
+  match Lmdb.version with
+  | _, major', minor', patch' ->
+    if
+      major' >= major &&
+      minor' >= minor &&
+      patch' >= patch
+    then ()
+    else skip ()
+
 let env =
   Env.create Rw
     ~flags:Env.Flags.(no_subdir + no_sync + no_mem_init)
@@ -645,17 +655,19 @@ let test_txn =
       check_raises "expecting Not_found" Not_found
         (fun () -> Map.get map 13 |> ignore);
     end
-  ; "wrong envirronment", `Quick,
+  ; "wrong environment", `Quick,
     begin fun () ->
       let env2 =
         Env.create Ro
           ~flags:Env.Flags.(no_subdir + no_sync + no_lock + no_mem_init)
           filename
       in
-      check_raises "wrong txn" (Invalid_argument "Lmdb: transaction from wrong environment.") begin fun () ->
-        ignore @@ Txn.go Ro env2
-          (fun txn -> Map.get ~txn map 0 |> ignore);
-      end;
+      check_raises "wrong txn"
+        (Invalid_argument "Lmdb: transaction from wrong environment.")
+        begin fun () ->
+          ignore @@ Txn.go Ro env2
+            (fun txn -> Map.get ~txn map 0 |> ignore);
+        end;
       Env.close env2;
     end
   ; "MAP_FULL triggered by txn_commit", `Quick, begin fun () ->
@@ -766,6 +778,7 @@ let test_txn =
       end
     end
   ; "prepare and commit", `Quick, begin fun () ->
+      require_version 1 0 0;
       ignore @@ Txn.go Rw env begin fun txn ->
         Map.add ~txn map 14 "blub";
         Txn.prepare txn;
@@ -773,6 +786,7 @@ let test_txn =
       Map.get map 14 |> check string "read" "blub";
     end
   ; "prepare and abort", `Quick, begin fun () ->
+      require_version 1 0 0;
       ignore @@ Txn.go Rw env begin fun txn ->
         Map.add ~txn map 15 "blub";
         Txn.prepare txn;
@@ -782,6 +796,7 @@ let test_txn =
       Map.get map 15 |> ignore
     end
   ; "rollback", `Quick, begin fun () ->
+      require_version 1 0 1; (* https://bugs.openldap.org/show_bug.cgi?id=10529 *)
       Txn.go Rw env begin fun txn ->
         Map.add ~txn map 15 "blub";
         Txn.id txn;
@@ -789,7 +804,7 @@ let test_txn =
       |> fun id ->
       Txn.rollback env (Option.get id);
       ignore @@ Txn.go Ro env begin fun txn ->
-        check_raises "Expecting Not_found" Not_found @@ fun () ->
+        check_raises "after rollback" Not_found @@ fun () ->
         Map.get ~txn map 15 |> ignore
       end
     end
