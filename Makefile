@@ -3,23 +3,24 @@ default: build
 
 .PHONY: build
 build: 
-	dune build @install
+	ocamlbuild build
 
 .PHONY: test
 test:
-	dune runtest
+	ocamlbuild test
 
 .PHONY: bench
 bench:
-	dune build --profile=release @bench
+	ocamlbuild tests/bench.byte && _build/tests/bench.byte
+	ocamlbuild tests/bench.native && _build/tests/bench.native
 
 .PHONY: clean
 clean:
-	dune clean
+	ocamlbuild -clean
 
 .PHONY: doc
 doc:
-	dune build @doc
+	ocamlbuild src/lmdb.docdir/index.html
 
 NAME=lmdb
 DOCDIR=.gh-pages
@@ -32,7 +33,7 @@ $(DOCDIR)/.git:
 
 gh-pages: $(DOCDIR)/.git doc
 	git -C $(DOCDIR) pull
-	cp -r _build/default/_doc/_html/* $(DOCDIR)/dev/
+	cp -r _build/src/lmdb.docdir/* $(DOCDIR)/dev/
 	git -C $(DOCDIR) add --all 
 	git -C $(DOCDIR) commit -a -m "gh-page updates"
 	git -C $(DOCDIR) push origin gh-pages
