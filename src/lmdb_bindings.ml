@@ -66,6 +66,7 @@ let
   Printexc.register_printer @@ begin function
     | Error i -> Some ("Lmdb.Error(" ^ strerror i ^ ")")
     | Exists -> Some "Lmdb.Exists"
+    | Map_full -> Some "Lmdb.Map_full"
     | _ -> None
   end;
   init ()
