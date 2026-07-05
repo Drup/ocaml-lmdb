@@ -1,5 +1,17 @@
 open Ocamlbuild_plugin
 
+let flags () =
+  List.iter
+    (fun flag -> pflag ["ocaml"; "byte"; flag] "dllib"
+        (fun param -> S [A "-dllib"; A param]))
+    ["compile"; "link"];
+
+  pflag ["ocaml"; "byte"; "link"] "dllpath"
+    (fun param -> S [A "-dllpath"; A param]);
+
+  pflag ["ocamlmklib"] "dllpath" (fun param -> S [A ("-dllpath"); A param]);
+;;
+
 let rules () =
   let conffile = !Options.build_dir / "_config" in
 
@@ -225,5 +237,5 @@ let () =
     Options.use_ocamlfind := true;
     Options.make_links := false;
   | After_options
-  | Before_rules -> ()
+  | Before_rules -> flags ()
   | After_rules -> rules ()
