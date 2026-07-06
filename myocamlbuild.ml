@@ -9,8 +9,7 @@ let flags () =
   pflag ["ocaml"; "byte"; "link"] "dllpath"
     (fun param -> S [A "-dllpath"; A param]);
 
-  pflag ["ocamlmklib"] "dllpath" (fun param -> S [A ("-dllpath"); A param]);
-;;
+  pflag ["ocamlmklib"] "dllpath" (fun param -> S [A ("-dllpath"); A param])
 
 let rules () =
   let conffile = !Options.build_dir / "_config" in
@@ -102,11 +101,20 @@ let rules () =
       end;
 
     let config =
-      with_input_file conffile In_channel.input_lines
-      |> List.map begin fun s ->
+      let read_file file =
+        let ch = open_in file in
+        let rec seq () =
+          match input_line ch with
+          | exception End_of_file -> close_in ch; Seq.Nil
+          | line -> Seq.Cons (line, seq)
+        in seq
+      in
+      read_file conffile
+      |> Seq.map begin fun s ->
         Scanf.sscanf s "%s@: %s@!"
           (fun k v -> k,v)
       end
+      |> List.of_seq
     in
     let tagify k v =
       String.split_on_char ' ' v
