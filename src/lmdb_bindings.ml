@@ -115,7 +115,9 @@ type envinfo =
   ; num_readers : int
   }
 
-type bigstring = Bigarray.((char, int8_unsigned_elt, c_layout) Array1.t)
+type bigstring =
+  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout)
+    Bigarray.Array1.t
 
 (* env *)
 type env

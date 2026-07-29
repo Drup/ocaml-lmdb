@@ -1,7 +1,7 @@
 module Mdb = Lmdb_bindings
 module type Flags = Mdb.Flags
 module Bigstring : sig
-    type t = Bigarray.((char, int8_unsigned_elt, c_layout) Array1.t)
+    type t = Mdb.bigstring
     val create : int -> t
 
     val length : t -> int
@@ -21,7 +21,7 @@ module Bigstring : sig
     val get_int64_le : t -> int -> int64
   end
 = struct
-  type t = Bigarray.((char, int8_unsigned_elt, c_layout) Array1.t)
+  type t = Mdb.bigstring
 
   let create = Bigarray.(Array1.create Char C_layout)
 
