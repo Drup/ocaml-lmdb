@@ -5,7 +5,7 @@ true: custom
 
 <*.ml>: use_lmdb
 
-<*.{byte,native}>: use_lmdb, package(bigstringaf)
+<*.{byte,native}>: use_lmdb
 
 <bench.{ml,byte,native}>: package(benchmark)
 

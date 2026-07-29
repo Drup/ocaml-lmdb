@@ -1,6 +1,6 @@
 version = ""
 description = "Bindings for LMDB, a fast in-file database with ACID transactions"
-requires = "bigstringaf unix"
+requires = "unix"
 archive(byte) = "lmdb.cma"
 archive(native) = "lmdb.cmxa"
 plugin(byte) = "lmdb.cma"
