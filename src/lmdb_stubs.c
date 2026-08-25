@@ -265,12 +265,10 @@ CAMLprim value mdbs_dbi_flags(value txn, value dbi) {
 
 int mdbs_msg_func(const char *msg, void *callback)
 {
-  int ret;
-  caml_acquire_runtime_system();
-  ret = Int_val(caml_callback(
-	*(value *)callback,
-	caml_copy_string(msg)));
-  caml_release_runtime_system();
+  /* The string allocation needs to happen before dereferencing
+   * the callback pointer because the GC may move callback around. */
+  value msgv = caml_copy_string(msg);
+  int ret = Int_val(caml_callback(*(value *)callback, msgv));
   return ret;
 }
 
@@ -278,13 +276,11 @@ CAMLprim value mdbs_reader_list(value env, value callback)
 {
   CAMLparam1(callback);
 
-  caml_release_runtime_system();
   int ret =
     mdb_reader_list(
 	unhide(env),
 	&mdbs_msg_func,
 	&callback);
-  caml_acquire_runtime_system();
 
   if (ret < 0)
     mdbs_err(ret);
