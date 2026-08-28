@@ -627,7 +627,6 @@ static inline value ba_of_mvp(MDB_val *mvp)
 
 CAMLprim value mdbs_get(value txn, value dbi, value key)
 {
-  CAMLparam1(key);
   MDB_val ckey, cval;
 
   mvp_of_ba(&ckey, key);
@@ -638,7 +637,7 @@ CAMLprim value mdbs_get(value txn, value dbi, value key)
 	&ckey,
 	&cval));
 
-  CAMLreturn(ba_of_mvp(&cval));
+  return ba_of_mvp(&cval);
 }
 
 CAMLprim value mdbs_cursor_get(value cursor, value keyopt, value valopt, value op)
@@ -677,7 +676,6 @@ CAMLprim value mdbs_cursor_get(value cursor, value keyopt, value valopt, value o
 
 CAMLprim value mdbs_del(value txn, value dbi, value key, value valopt)
 {
-  CAMLparam2(key, valopt);
   MDB_val ckey, cval;
 
   mvp_of_ba(&ckey, key);
@@ -693,7 +691,7 @@ CAMLprim value mdbs_del(value txn, value dbi, value key, value valopt)
 	&ckey,
 	Is_block(valopt) ? &cval : NULL));
 
-  CAMLreturn(Val_unit);
+  return Val_unit;
 }
 
 CAMLprim value mdbs_cursor_del(value cursor, value flags)
@@ -704,7 +702,6 @@ CAMLprim value mdbs_cursor_del(value cursor, value flags)
 
 CAMLprim value mdbs_put(value txn, value dbi, value key, value valopt, value flags)
 {
-  CAMLparam2(key, valopt);
   MDB_val ckey, cval;
 
   mvp_of_ba(&ckey, key);
@@ -718,14 +715,13 @@ CAMLprim value mdbs_put(value txn, value dbi, value key, value valopt, value fla
 	Unsigned_int_val(flags) | (Is_block(valopt) ? 0 : MDB_RESERVE)));
 
   if (Is_block(valopt))
-    CAMLreturn(Val_unit);
+    return Val_unit;
   else
-    CAMLreturn(ba_of_mvp(&cval));
+    return ba_of_mvp(&cval);
 }
 
 CAMLprim value mdbs_cursor_put(value cursor, value key, value valopt, value flags)
 {
-  CAMLparam2(key, valopt);
   MDB_val ckey, cval;
 
   mvp_of_ba(&ckey, key);
@@ -738,9 +734,9 @@ CAMLprim value mdbs_cursor_put(value cursor, value key, value valopt, value flag
 	Unsigned_int_val(flags) | (Is_block(valopt) ? 0 : MDB_RESERVE)));
 
   if (Is_block(valopt))
-    CAMLreturn(Val_unit);
+    return Val_unit;
   else
-    CAMLreturn(ba_of_mvp(&cval));
+    return ba_of_mvp(&cval);
 }
 
 CAMLprim value mdbs_cmp(value txn, value dbi, value key, value val)
