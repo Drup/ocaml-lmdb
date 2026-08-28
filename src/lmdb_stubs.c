@@ -239,7 +239,7 @@ get(cursor_count, size_t)
 CAMLprim value mdbs_env_get_maxkeysize(value env)
 {
   caml_release_runtime_system();
-  int ret = Val_int(mdb_env_get_maxkeysize(unhide(env)));
+  value ret = Val_int(mdb_env_get_maxkeysize(unhide(env)));
   caml_acquire_runtime_system();
   return ret;
 }
@@ -742,7 +742,7 @@ CAMLprim value mdbs_cursor_put(value cursor, value key, value valopt, value flag
 CAMLprim value mdbs_cmp(value txn, value dbi, value key, value val)
 {
   MDB_val ckey, cval;
-  int ret;
+  value ret;
 
   mvp_of_ba(&ckey, key);
   mvp_of_ba(&cval, val);
@@ -761,7 +761,7 @@ CAMLprim value mdbs_cmp(value txn, value dbi, value key, value val)
 CAMLprim value mdbs_dcmp(value txn, value dbi, value key, value val)
 {
   MDB_val ckey, cval;
-  int ret;
+  value ret;
 
   mvp_of_ba(&ckey, key);
   mvp_of_ba(&cval, val);
