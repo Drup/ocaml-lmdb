@@ -751,7 +751,7 @@ module Map = struct
           (Conv.Flags.to_int flags)
         |> invalid_arg
       end;
-      dbi, flags
+      dbi, flags'
     in
     { env; dbi; flags; key; value }
 
