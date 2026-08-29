@@ -552,18 +552,16 @@ CAMLprim value mdbs_dbi_open(value txn, value name, value flags)
 {
   MDB_dbi dbi;
 
-  size_t cname_length;
   char *cname;
 
   if (Is_block(name)) {
     CAMLassert(Tag_val(Field(name,0)) == String_tag);
-    cname_length = caml_string_length(Field(name, 0)) + 1;
-    cname = alloca(cname_length);
-    memcpy(cname, String_val(Field(name,0)), cname_length);
+    const size_t length = caml_string_length(Field(name, 0)) + 1;
+    cname = alloca(length);
+    memcpy(cname, String_val(Field(name,0)), length);
   }
   else {
     CAMLassert(Int_val(name) == 0);
-    cname_length = 0;
     cname = NULL;
   }
 
