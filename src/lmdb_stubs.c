@@ -201,6 +201,14 @@ CAMLprim value mdbs_env_open(value env, value path, value flags, value mode)
   mdbs_err_rel(mdb_env_open(
 	unhide(env),
 	cpath,
+#if defined(__APPLE__) && defined(__aarch64__)
+	/*
+	 * Work around suspected bug in Darwin unified buffer cache.
+	 * The effects on database durability and integrity are described here:
+	 * http://www.lmdb.tech/doc/group__mdb.html#ga32a193c6bf4d7d5c5d579e71f22e9340
+	 */
+	MDB_WRITEMAP |
+#endif
 	Unsigned_int_val(flags),
 	Int_val(mode)));
 
