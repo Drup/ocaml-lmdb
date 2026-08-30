@@ -229,7 +229,7 @@ let rules () =
         ; Cmd(S(
           [ V "OCAMLFIND"
           ; A "install"
-          ; A "-patch-version"; A "1.1.2"
+          ; A "-patch-version"; A "1.1.3"
           ; A "lmdb"
           ] @ List.map (fun f -> P f) install_files
           ))
